@@ -1,0 +1,42 @@
+name: Squash Git History
+
+on:
+  schedule:
+    - cron: '30 21 * * 6' # Weekly: Sunday 03:00 AM IST (Saturday 21:30 UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  squash:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout latest 2 commits
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Squash history into a single commit
+        run: |
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          echo "Checked commit count: $COMMIT_COUNT"
+          if [ "$COMMIT_COUNT" -le 1 ]; then
+            echo "History already has 1 commit. Skipping."
+            exit 0
+          fi
+
+          # Safety check for AI-Studio-pdf-worker: skip if queued jobs are waiting
+          if [ -d "jobs" ] && [ -n "$(find jobs -maxdepth 1 -name '*.json' -print -quit)" ]; then
+            echo "Pending jobs found in jobs/. Skipping squash this run."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout --orphan temp-clean-main
+          git add -A
+          git commit -m "chore: squash repository history [skip ci]"
+          git branch -M main
+          git push -f origin main
