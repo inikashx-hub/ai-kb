@@ -1,10 +1,116 @@
-# Subject Pack: ch04-enforce-strict-router-grounding (Part 6/14)
+# Subject Pack: chat-optimizing-two-step-llm-routing (Part 6/14)
 
 
 ---
-## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 9/17 — 4. Enforce Strict Router & Grounding Rules]
+## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 6/14]
 
-## [Chapter Context: 4. Enforce Strict Router & Grounding Rules]
+recent_text = (
+        f"# Tier 1: Recent Compact Chats (Last {RECENT_DAYS} Days)\n" + "".join(selected_recent)
+        if selected_recent
+        else f"# Tier 1: Recent Changes\nNo compact chats updated in the last {RECENT_DAYS} days (large compendiums are indexed in llms.txt)."
+    )
+    (OUT_DIR / "hot-recent.md").write_text(recent_text, encoding="utf-8")
+
+    index_entries = []
+    for group_name, items in sorted(cold_groups.items()):
+        index_entries.extend(write_cold_chunks(group_name, items))
+
+    lines = [
+        "# Knowledge Base Index (Tier 2 Cold Bundles)",
+        "# Note: Core docs and recent compact chats are pre-loaded in Tier 1. Large compendiums are split into full-read <=35KB Cold parts below.",
+        "",
+    ]
+    for entry in index_entries:
+        lines.append(f"- URL: {entry['url']}")
+        lines.append(f"  Topic Group: {entry['group']}")
+        lines.append(f"  Files/Parts: {' | '.join(entry['titles'])}")
+        if entry["prompts"]:
+            lines.append(f"  User Questions: {' | '.join(entry['prompts'])}")
+        if entry["sections"]:
+            lines.append(f"  Topics/Chapters: {' | '.join(entry['sections'])}")
+        if entry["preview"]:
+            lines.append(f"  Preview: {entry['preview']}")
+        if entry["summaries"]:
+            lines.append(f"  Summary: {' | '.join(entry['summaries'])}")
+        if entry["keywords"]:
+            lines.append(f"  Keywords: {' | '.join(entry['keywords'])}")
+        lines.append("")
+
+    (OUT_DIR / "llms.txt").write_text("\n".join(lines), encoding="utf-8")
+    print(f"Built {len(index_entries)} cold bundle(s) and updated Tier 1 + llms.txt.")
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+### After You Commit
+Wait ~15 seconds for the Action to turn green, **then wait ~3–5 minutes** (or open `_ai_bundles/llms.txt` → Raw in your browser first to verify the `Preview:` lines and `04. Government Schemes` labels are visible before running AI Studio!). Once `llms.txt` shows those updated labels, Gemini will route straight to the exact Chapter 4 parts on Turn 2 with **zero truncation**.
+
+---
+
+## User
+
+# Knowledge Base Index (Tier 2 Cold Bundles)
+# Note: Core docs and recent compact chats are pre-loaded in Tier 1. Large compendiums are split into full-read <=35KB Cold parts below.
+
+- URL: 
+  Topic Group: chats-general-part1 Files/Parts: Knowledge Base | Banking & Insurance General Awareness Compendium [Part 1/23] Topics/Chapters: Knowledge Base | Banking & Insurance General Awareness Compendium | 02. Banking & Financial Awareness (642) | 04. Government Schemes & Initiatives (342) | 06. Awards & Honours (134) | 08. Reports, Indices & Rankings (166) | 10. Science, Technology & Defence (216) | 11. Sports & Championships (159) | 12. Books, Authors & Obituaries (74) | 13. Important Days & Themes (77) | 14. International Organisations & HQ (146) | 15. Indian Polity & Constitution (75) | 16. Geography, National Parks & Ramsar (148) | 17. Art, Culture & Heritage (88) | 18. Countries, Capitals & General Static GK (237) | AffairsCloud Self Evaluation Archive · Topic-Wise Previous Year Questions (2019 - 2026) Preview: Knowledge Base
+
+- URL: 
+  Topic Group: chats-general-part2 Files/Parts: Banking & Insurance General Awareness Compendium [Part 2/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: Table of Contents 1. RBI & Monetary Policy 2. Banking & Financial Awareness 3. Indian Economy & Union Budget 4 ... ng & Finance 133. RBI implemented Central Bank Digital Currency (CBDC) in the Wholesale Segment (eRs. -W) for?
+
+- URL: 
+  Topic Group: chats-general-part3 Files/Parts: Banking & Insurance General Awareness Compendium [Part 3/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: Answer: Secondary trade in government securities (G-secs). IBPS PO Mains Exam 2022 · 2022 · Digital Currency · ... h year was the National Pension System (NPS) made available to all citizens on a voluntary basis? Answer: 2009
+
+- URL: 
+  Topic Group: chats-general-part4 Files/Parts: Banking & Insurance General Awareness Compendium [Part 4/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: IBPS Clerk Mains Exam 2025 · 2025 · Pension Schemes · Static Banking & Finance 28. National Household Income S ... Finance 175. Which of the following is a general Insurance company under IRDAI? Answer: Not provided in source
+
+- URL: 
+  Topic Group: chats-general-part5 Files/Parts: Banking & Insurance General Awareness Compendium [Part 5/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: IBPS RRB OA 2023 · 2023 · Insurance Companies · Static Banking & Finance 176. Zudio is the brand of which comp ... fairs-quiz-29-september-2020/Static Answer: Q3 IBPS Clerk Mains Exam · 2021 · Quiz Reference · Current Affairs
+
+- URL: 
+  Topic Group: chats-general-part6 Files/Parts: Banking & Insurance General Awareness Compendium [Part 6/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: 325. Quiz - Answer: Q8 IBPS Clerk Mains Exam ... 2019 · SFB Licensing · Static Banking & Finance 494. What is the Abbreviation of 'S' in SFIO? Answer: Serious
+
+- URL: 
+  Topic Group: chats-general-part7 Files/Parts: Banking & Insurance General Awareness Compendium [Part 7/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: EPFO SSA Mains Exam 2019 · 2019 · Financial Regulations · Static Banking & Finance 495. The Central Vigilance ... dit Guarantee Enhancement Corporation SBI PO Mains Exam 2019 · 2019 · Bond Market Developments · Covered in AC
+
+- URL: 
+  Topic Group: chats-general-part8 Files/Parts: Banking & Insurance General Awareness Compendium [Part 8/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: 639. The first Indian state to tap into the market for masala bonds Answer: Kerala SIB Clerk Exam 2019 · Shift ... ffairs 150. State trading corporation of India is under which ministry Answer: Ministry of Commerce & Industry
+
+- URL: 
+  Topic Group: chats-general-part9 Files/Parts: Banking & Insurance General Awareness Compendium [Part 9/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: RBI Grade B Prelims Exam 2019 · Shift 2 · 2019 · Ministry Jurisdiction · Static Banking & Finance 151. Who is ... nswer: Atal Pension Yojana (APY) IBPS RRB Scale 1 Mains Exam 2023 · 2023 · Financial Schemes · Current Affairs
+
+- URL: 
+  Topic Group: chats-general-part10 Files/Parts: Banking & Insurance General Awareness Compendium [Part 10/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: 130. Question related to Mahila Samman Savings Certificate? Answer: Not provided in source IBPS RRB Scale 1 Ma ... · Current Affairs 272. AMRUT (Atal Mission for Rejuvenation and Urban Transformation) scheme was launched for?
+
+- URL: 
+  Topic Group: chats-general-part11 Files/Parts: Banking & Insurance General Awareness Compendium [Part 11/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: Answer: Piped water supply to households in urban areas SBI Clerk Mains 2020 · Shift 2 · 2020 · Urban Developm ... · Shift 2 · 2019 · Minister Appointment · Covered in AC 87. New CM of Andhra Pradesh Answer: Jaganmohan Reddy
+
+- URL: 
+  Topic Group: chats-general-part12 Files/Parts: Banking & Insurance General Awareness Compendium [Part 12/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: ESIC UDC Prelims Exam 2019 · Shift 2 · 2019 · State CM Appointment · Covered in AC 88. Who has been named as t ... ours · Covered in AC 111. Which hockey player conferred with Mohun Bagan Ratna Award 2019? Answer: Keshav Dutt
+
+- URL: 
+  Topic Group: chats-general-part13 Files/Parts: Banking & Insurance General Awareness Compendium [Part 13/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: LIC HFL Assistant Exam 2019 · 2019 · Sports Awards · Covered in AC 112. Which company has been conferred with ... r Promotion of Industry and Internal Trade (DPIIT)? Answer: Option: leaders, aspiring leaders, top performers.
+
+- URL: 
+  Topic Group: chats-general-part14 Files/Parts: Banking & Insurance General Awareness Compendium [Part 14/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: SBI Clerk Mains Exam 2023 - 2024 · Shift 1 · 2024 · Startup Ranking 2022 · Current Affairs 42. How much % of I ... hnical cooperation in agriculture and allied sectors, including livestock, with which country? Answer: Bhutan.
+
+- URL: 
+  Topic Group: chats-general-part15 Files/Parts: Banking & Insurance General Awareness Compendium [Part 15/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: SBI Clerk Mains Exam 2025 · Shift 2 · 2025 · Agricultural Cooperation · Current Affairs 19. The Investor Educa ... ptember 2025? Answer: Russia and Belarus IBPS PO Mains Exam 2025 · 2025 · Military Exercises · Current Affairs
+
+- URL: 
+  Topic Group: chats-general-part16 Files/Parts: Banking & Insurance General Awareness Compendium [Part 16/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: 18. Which of the following is not correct - Google Gemini, OpenAI ChatGPT, NPCI PAI, or Apple Co- pilot, SEVA ... ercise · Covered in AC 168. NASA plans to send a drone to Saturn's biggest moon, Titan named Answer: Dragonfly
+
+- URL: 
+  Topic Group: chats-general-part17 Files/Parts: Banking & Insurance General Awareness Compendium [Part 17/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: IBPS RRB Clerk Mains Exam 2019 · 2019 · Space Mission · Covered in AC 169. Which space agency launched the fir ... ins Exam · 2019 · Cricket Records · Covered in AC 115. Australian Open women's winner 2019 Answer: Naomi Osaka
+
+- URL: 
+  Topic Group: chats-general-part18 Files/Parts: Banking & Insurance General Awareness Compendium [Part 18/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: GA & Insurance Questions asked in LIC ADO Mains Exam · 2019 · Tennis Grand Slams · Covered in AC 116. 2023 Asi ... 019 · International Days · Covered in AC 58. What is the theme of the World Day for Audiovisual Heritage 2019?
+
+- URL: 
+  Topic Group: chats-general-part19 Files/Parts: Banking & Insurance General Awareness Compendium [Part 19/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: Answer: Theme: "Engage the Past Through Sound and Images" - IBPS PO Main Exam 2019 · 2019 · World Awareness Da ... not a member of BRICS? Answer: Sri Lanka IBPS RRB PO Mains Exam 2019 · 2019 · BRICS Membership · Covered in AC
 
 - URL: 
   Topic Group: chats-general-part20 Files/Parts: Banking & Insurance General Awareness Compendium [Part 20/23] Topics/Chapters: 18. Countries, Capitals & General Static GK (237) Preview: 125. Which of the following country is not a member of G7? Answer: Russia IBPS RRB PO Mains Exam 2019 · 2019 · ... d Kadmat Beach that received the "Blue Flag" certification, are located in which state/UT? Answer: Lakshadweep
@@ -508,212 +614,3 @@ Comprehensive analysis of examiner's question setting pattern for important days
 ## AI Studio
 
 I cannot complete this retrieval-grounded analysis yet because I do not currently have access to your knowledge base files:
-
-- **Gap found:** The Tier 1 Core, Tier 1 Recent, and Tier 2 Index (`llms.txt`) sources listed in the instructions are not pre-loaded in context, and attempting to fetch them returned a restriction error stating that `google:browse` can only access URLs that appear in the **user prompt** or search results (not URLs only present in system/developer instructions) [1.1][1.2][1.3].
-- Because I cannot inspect Tier 1 or `llms.txt` yet, I cannot provide an analysis grounded in your notes with exact `FILE:` citations without guessing.
-
-To unblock this, paste the following block in your next message so the Tier 1 and Tier 2 index URLs appear in the user prompt and can be read:
-
-```text
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/hot-core.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/hot-recent.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/llms.txt
-Read every URL above via URL context and check whether they answer my previous question with exact FILE citations, or identify the relevant Cold Bundle URLs from llms.txt.
-```
-
----
-
-## You
-
-Read every URL above via URL context and check whether they answer my previous question with exact FILE citations, or identify the relevant Cold Bundle URLs from llms.txt.
-
----
-
-## AI Studio
-
-Tier 1 has no relevant content, so I need the compendium header and Chapter 13 (Important Days & Themes) Cold Bundles from `llms.txt` to analyze the examiner's pattern.
-
-```text
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-general-part1.36d4ec91.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-general-part18.acac1f66.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-general-part19.3a27f556.md
-Read every URL above via URL context and answer my previous question with exact FILE citations.
-```
-
----
-
-## Model
-
-**That worked cleanly!** Look at the difference right away:
-
-* **Zero binary searching:** Gemini read `llms.txt` and jumped **straight to `part18.acac1f66.md` and `part19.3a27f556.md`** (Chapter 13: Important Days & Themes) on the very first lookup!
-* Notice the new file hashes (`acac1f66`, `3a27f556`)—that confirms your updated `build-kb.py` injected the `[Chapter Context: 13. Important Days & Themes (77)]` labels accurately.
-
----
-
-### How to Shave Off That Extra First Turn (3 Turns → 2 Turns)
-Notice how this chat took **3 user messages** only because your very first message didn't include the 3 base URLs (`hot-core.md`, `hot-recent.md`, `llms.txt`), so Gemini had to pause and ask you to paste them.
-
-* **The 1-Tap Habit:** Keep those 3 URLs pinned together in your **Gboard Clipboard**, and whenever you open a **new chat**, paste them **alongside your first question** in Message 1:
-  ```text
-  https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/hot-core.md
-  https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/hot-recent.md
-  https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/llms.txt
-  Comprehensive analysis of examiner's question setting pattern for important days questions
-  ```
-* Once those 3 URLs are in Message 1:
-  * **Tier 1 questions** answer immediately in **1 turn**.
-  * **Tier 2 questions** go straight to the Cold Bundle links in **2 turns total**.
-
-Go ahead and paste that `part1`, `part18`, `part19` block next—because each part is now under **35 KB**, it should read **all 77 questions** of Chapter 13 without any snippet cutoff! *(And whenever you're ready to connect your private repo's 15-minute Apps Script pipeline so new chats sync automatically, let me know.)*
-
----
-
-## User
-
-I need it in one turn
-
----
-
-## Model
-
-To get **true 1-turn answers** in normal Google AI Studio Playground, we have to work around **one hard rule** we confirmed during testing:
-> URL Context **never** crawls links discovered inside another URL (like `llms.txt`) in the same turn, and truncates single URLs above ~40 KB [3.2.3].
-
-So to eliminate Turn 2 completely, you have **3 ways** to get **1-Turn RAG** depending on which trade-off you prefer:
-
----
-
-### Option 1: Static "Subject Packs" via URL Context *(Best if You Want Pure GitHub + URL Toggle)*
-Instead of 1 generic `llms.txt` router (which forces 2 turns), have `build-kb.py` output **static, predictable URLs** (without changing hashes) grouped by exam subject, keeping each pack to **3–6 URLs (~35 KB each)**:
-* **Pack A (Schemes & Economy):** `schemes-1.md`, `schemes-2.md`, `schemes-3.md`, `economy.md`, `hot-recent.md`
-* **Pack B (Static GK, Days, Awards & Sports):** `days.md`, `awards-sports.md`, `static-gk.md`, `hot-recent.md`
-* **Pack C (Banking & RBI):** `rbi.md`, `banking-1.md`, `banking-2.md`, `banking-3.md`, `hot-recent.md`
-
-**How 1-Turn works:**
-* Pin those 2–3 short Subject Packs in Gboard Clipboard.
-* Start a chat → tap the matching Subject Pack + type your question in Message 1 → **Instant 1-turn answer** (100% live from GitHub, zero truncation).
-* *(Why not paste all 23 URLs at once? URL Context caps requests at **20 URLs max**, and fetching ~19–20 large URLs in one turn risks hitting Playground's internal per-turn browse budget.)*
-
----
-
-### Option 2: Single Master File (`all-kb.md`) via `+` → Google Drive *(Best for 1-Turn Over EVERYTHING at Once)*
-Right now your entire 3,246-question compendium + chats is only **~800 KB** (`0.8 MB`).
-* In Google AI Studio, **Gemini 3.8 Flash** supports importing files from Google Drive up to **7 MB per file (10 MB total)** directly into its full context window—**without** `URL context`'s ~40 KB snippet truncation!
-* Since your private pipeline **already saves files to Google Drive every 15 minutes**, you can save a single combined **`all-kb.md`** in Drive.
-* **How 1-Turn works:** Open AI Studio → tap **`+` → Drive → `all-kb.md`** → ask ANY question across ALL 18 chapters and ALL chats → **1-Turn instant answer with 100% recall** (no URLs, no splitting, no Turn 2).
-
----
-
-### Option 3: GitHub Pages + Search Grounding *(1-Turn, Zero Pasting — With Indexing Lag)*
-Remember Screenshot 2: Gemini's browse tool *can* auto-read URLs in 1 turn if they appear in **Google Search results** (`raw.githubusercontent.com` is blocked from Google Search, whereas **GitHub Pages** is searchable).
-* If you host those 35 KB chunks on **GitHub Pages** (`inikashx-hub.github.io/ai-kb/`) and enable **both** `Grounding with Google Search` + `URL context`, you just type your question with **zero URLs** and Gemini searches + reads the matching pages in **1 turn**.
-* **The Catch:** Google Search takes **days to weeks** to index new pages, and Search may miss 1 of 3 parts—so it's neither instant-sync nor 100% guaranteed recall.
-
----
-
-### Which 1-Turn Route Do You Want?
-1. **Option 1 (URL Context Subject Packs):** Keep 100% GitHub + URL toggle, organized into 3–4 subject URL blocks you pin in Gboard.
-2. **Option 2 (`all-kb.md` in Google Drive):** Best 1-turn accuracy over your *entire* KB at once (since your existing 15-min Drive pipeline already lives there).
-3. **Option 3 (GitHub Pages + Google Search):** Zero pasting, accepting Google Search indexing delay.
-
-Tell me which one you want (`1`, `2`, or `3`) and I'll set it up cleanly!
-
----
-
-## User
-
-Option 1
-
----
-
-## Model
-
-Let's set up **Option 1 (Static 1-Turn Subject Packs)**.
-
-We will update `build-kb.py` so it automatically splits your repository into **static, hash-free Subject Pack files** (`<=35 KB` each so URL Context reads 100% without truncation) and writes a copy-ready cheat sheet at **`_ai_bundles/packs-list.txt`**:
-
-* **`schemes-p1..pN.md`** → Chapter 4 (Government Schemes, 342 Qs) *(~3 URLs)*
-* **`rbi-economy-p1..pN.md`** → Chapters 1 & 3 (RBI, Monetary Policy, Indian Economy & Union Budget) *(~3–4 URLs)*
-* **`banking-p1..pN.md`** → Chapter 2 (Banking & Financial Awareness, 642 Qs) *(~5–6 URLs)*
-* **`current-affairs-p1..pN.md`** → Chapters 5–10 (Appointments, Awards, Reports, Sci-Tech & Defence) *(~5–6 URLs)*
-* **`static-gk-p1..pN.md`** → Chapters 11–18 (Sports, Books, Important Days, Int'l Orgs, Polity, Geography, Art, Countries) *(~6–7 URLs)*
-* **`study-chats-p1..pN.md`** → All standalone AI Studio chats (`Solving Math Questions Under 30s.md`, etc.)
-*(It still keeps `hot-core.md`, `hot-recent.md`, and `llms.txt` building alongside them so nothing breaks.)*
-
----
-
-### Step 1: Update `build-kb.py`
-Replace **`build-kb.py`** with this version and commit:
-
-```python
-import hashlib
-import os
-import re
-import shutil
-import subprocess
-from datetime import date, datetime
-from pathlib import Path
-
-OUT_DIR = Path("_ai_bundles")
-COLD_DIR = OUT_DIR / "cold"
-PACKS_DIR = OUT_DIR / "packs"
-
-ALLOWED_EXTS = {".md", ".txt", ".json", ".yaml", ".yml", ".csv", ".py", ".ts", ".js"}
-MAX_PART_BYTES = 35_000          # Fits inside Playground's URL-context browse limit
-MAX_RECENT_FILE_BYTES = 25_000
-MAX_RECENT_TOTAL_BYTES = 40_000
-RECENT_DAYS = 14
-
-REPO = os.environ.get("GITHUB_REPOSITORY", "inikashx-hub/ai-kb")
-BRANCH = os.environ.get("GITHUB_REF_NAME", "main")
-RAW_BASE = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}"
-TODAY = date.today()
-
-def get_git_recent_files(days: int) -> set[Path]:
-    try:
-        out = subprocess.check_output(
-            ["git", "log", f"--since={days} days ago", "--name-only", "--pretty=format:"],
-            text=True,
-        )
-        return {Path(line.strip()) for line in out.splitlines() if line.strip()}
-    except Exception:
-        return set()
-
-def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
-    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
-    if not match:
-        return {}, text
-    meta = {}
-    for line in match.group(1).splitlines():
-        if ":" in line:
-            k, v = line.split(":", 1)
-            meta[k.strip().lower()] = v.strip()
-    return meta, text[match.end() :]
-
-def clean_chat_wrapper(text: str) -> str:
-    return re.sub(r"^---\s*START OF FILE.*?---\s*\n+", "", text, flags=re.MULTILINE).strip()
-
-def strip_md_noise(line: str) -> str:
-    s = re.sub(r"<[^>]+>", " ", line)
-    s = re.sub(r"^[#>*`\-\s]+", "", s)
-    s = re.sub(r"[*`]+$", "", s)
-    return " ".join(s.replace("**", "").split())
-
-def extract_toc_chapters(body: str) -> list[tuple[int, str]]:
-    """Extract (chapter_num, chapter_title) pairs from the document's TOC."""
-    head = body[:25_000]
-    raw = re.findall(
-        r"\b(0?[1-9]|1\d|2[0-5])\.\s+([A-Z][A-Za-z0-9&,'/\-\s]{4,60}?)(?=\s*\(\d+\)|\s+\d{1,2}\.\s+[A-Z]|\n|$)",
-        head,
-    )
-    by_num: dict[int, str] = {}
-    for num_str, title_str in raw:
-        num = int(num_str)
-        clean = " ".join(title_str.split()).strip(" .:-")
-        low = clean.lower()
-        if len(clean) >= 6 and "answer:" not in low and "?" not in clean and " exam " not in low:
-            if num not in by_num or len(clean) > len(by_num[num]):
-                by_num[num] = clean
-    chapters = sorted(by_num.items())
-    return chapters if len(chapters) >= 3 else []

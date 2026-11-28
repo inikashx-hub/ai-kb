@@ -1,50 +1,8 @@
-# Subject Pack: ch04-enforce-strict-router-grounding (Part 12/14)
+# Cold Knowledge Bundle: chats-2026-11-part11
 
 
 ---
-## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 15/17 — 4. Enforce Strict Router & Grounding Rules]
-
-## [Chapter Context: 4. Enforce Strict Router & Grounding Rules]
-
-function renderCleanMd_(chat) {
-  const lines = [`# ${chat.title}`, ''];
-  if (CONFIG.INCLUDE_METADATA) {
-    lines.push(`> **Model:** ${chat.model} | **Updated:** ${chat.updatedIso.replace('T', ' ').slice(0, 16)} UTC`, '', '---', '');
-  }
-  if (chat.systemInstruction) lines.push('## System Instructions', '', chat.systemInstruction, '', '---', '');
-  lines.push(...formatTurnsMd_(chat.turns));
-  return lines.join('\n').trim() + '\n';
-}
-
-function renderContinuationMd_(chat, turns, startIdx, endIdx, partNum) {
-  const lines = [];
-  if (partNum) {
-    lines.push(`# ${chat.title} (Part ${partNum})`, '');
-  }
-  const rangeLabel = `Turns ${startIdx + 1}–${endIdx}`;
-  if (CONFIG.INCLUDE_METADATA) {
-    lines.push(`> **Continuation (${rangeLabel})** | **Model:** ${chat.model} | **Updated:** ${chat.updatedIso.replace('T', ' ').slice(0, 16)} UTC`, '', '---', '');
-  } else {
-    lines.push(`> **Continuation (${rangeLabel})**`, '', '---', '');
-  }
-  lines.push(...formatTurnsMd_(turns));
-  return lines.join('\n').trim() + '\n';
-}
-
-function getSourceFolders_() {
-  const out = [];
-  for (const n of CONFIG.SOURCE_FOLDER_NAMES) {
-    const it = DriveApp.getFoldersByName(n);
-    while (it.hasNext()) { const f = it.next(); if (!f.isTrashed()) out.push(f); }
-  }
-  return out;
-}
-
-function getOrCreateFolder_(name) {
-  const it = DriveApp.getFoldersByName(name);
-  while (it.hasNext()) { const f = it.next(); if (!f.isTrashed()) return f; }
-  return DriveApp.createFolder(name);
-}
+## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 11/14]
 
 function collectFiles_(folder, visited, out, sinceIso) {
   const id = folder.getId();
@@ -66,110 +24,161 @@ function cleanName_(raw) {
 }
 ```
 
----
-
-### Quick Test to Verify End-to-End
-1. Make sure your `GITHUB_TOKEN` (or a new `AI_KB_TOKEN` in Script Properties) has **Contents: Read & write** on `inikashx-hub/ai-kb`.
-2. Add **`[kb]`** to the name of one chat JSON in Drive (or move one chat into `Google AI Studio/KB/Maths/`).
-3. In Apps Script, select **`flushKbSyncNow`** and tap **Run**.
-4. Within ~20 seconds, you’ll see that file land cleanly in `inikashx-hub/ai-kb`, trigger `build-kb.yml`, and automatically generate its 1-turn Subject Pack in `_ai_bundles/packs-list.txt` and Cold Bundle in `_ai_bundles/llms.txt`!
+### Quick Checklist After Pasting
+1. **Save** the Apps Script (`Ctrl + S` / Save icon).
+2. Make sure you also update **`.github/workflows/build-pdfs.yml`** in `AI-Studio-pdf-worker` with the `actions/cache@v4` version from the previous message.
+3. Want to test it right away without waiting 4 hours? Select **`flushPendingPdfsNow`** from the Run dropdown in Apps Script and tap **Run**. *(Once the first cached GitHub run finishes, every run after that restores all packages from cache!)*
 
 ---
 
 ## User
 
-I don't know how to edit the token
+Should I update version in apps script?
 
 ---
 
 ## Model
 
-First, check which kind of token you already have—you might not even need to edit it!
+**No—you don't need to update the deployment version for this change**, and here is why:
 
-### Step 1: Check Your Token Prefix in Apps Script
-1. In Google Apps Script, tap **Project Settings (⚙️ gear icon)** on the left.
-2. Scroll down to **Script Properties** and look at `GITHUB_TOKEN`:
-   * If it starts with **`ghp_`** *(Classic token)* → **You don’t need to change anything!** It already works on both repos.
-   * If it starts with **`github_pat_`** *(Fine-grained token)* → Follow Step 2 below.
+* **Time-driven triggers (`syncCleanMarkdown`) and manual runs (`flushPendingPdfsNow`)** always execute your latest saved code automatically as soon as you hit Save.
+* **Your Web App deployment (`doPost`)** only runs the pinned deployment version—**but we didn't change a single line of `doPost`**, `getSecrets_`, or `PDF_FOLDER_NAME`, so your existing `GAS_WEBHOOK_URL` will keep working identically as-is.
 
----
-
-### Step 2: Grant Access to `ai-kb` on GitHub
-Open **`https://github.com/settings/personal-access-tokens`** in your phone browser *(or tap your **Profile picture → Settings → scroll down to Developer settings → Personal access tokens → Fine-grained tokens**)*.
-
-From there, pick whichever is easier:
-
-#### Easiest Way: Edit Your Existing Token *(No Apps Script Changes Needed)*
-1. Tap the **name** of your existing token.
-2. Scroll to **Repository access** → choose **Only select repositories**.
-3. Make sure **BOTH `AI-Studio-pdf-worker` AND `ai-kb`** are checked! *(Double-check that `AI-Studio-pdf-worker` stays selected so your PDF builder doesn't lose access.)*
-4. Under **Repository permissions**, confirm **Contents** is set to **Read and write** (keep **Actions** / **Workflows** as-is for your PDF worker).
-5. Tap **Save** / **Update permissions** at the bottom. Done—your token string stays the same!
-
-#### Alternative Way: Add a Separate `AI_KB_TOKEN` *(Zero Risk to PDF Worker)*
-1. On the **Fine-grained tokens** page, tap **Generate new token**.
-2. **Token name:** `ai-kb-sync` (pick any **Expiration** you prefer).
-3. **Repository access:** **Only select repositories** → select **`ai-kb`**.
-4. **Repository permissions → Contents:** **Read and write**.
-5. Tap **Generate token** and copy the `github_pat_...` string.
-6. Back in Apps Script → **Project Settings (⚙️) → Script Properties → Add script property**:
-   * **Property:** `AI_KB_TOKEN`
-   * **Value:** *(paste your new token)*
-   * Tap **Save script properties**.
-
-Once done, tag one chat in Drive with `[kb]` (or run **`flushKbSyncNow`** in Apps Script) to test the sync!
-
----
-
-## Model
-
-Your script pasted cleanly and ran with **zero errors**!
-
-`MD: 0, PDF batch queued: 0, ai-kb synced: 0` just means your existing Drive files were already synced to Markdown, and **none of the source chats are marked for `ai-kb` yet**.
-
----
-
-### How to Run Your First `ai-kb` Sync Test
-1. **Go to your source AI Studio folder in Google Drive** (`Google AI Studio` or `AI Studio` — *not* `AI Studio Markdown`).
-2. Pick one study chat (for example, inside `Maths/`) and either:
-   * **Rename it** to include **`[kb]`** (e.g., `Percentages [kb]`), **OR**
-   * Move it into a subfolder named **`KB`** inside `Google AI Studio` (e.g., `Google AI Studio/KB/Maths/`).
-   *(Remember: `[core]` sends it to `core/` for Tier 1 instead.)*
-3. Come back to Apps Script and tap **Run** on **`flushKbSyncNow`**.
-
----
-
-### What to Look For in the Execution Log
-* **Success:** You'll see `ai-kb synced: 1` (and the chat will appear inside `inikashx-hub/ai-kb/chats/...` within seconds).
-* **If it logs a `403` or `404` error:** That just means the token needs `Contents: Read & write` access to `ai-kb`—share the exact log message if that happens and we'll sort it right away!
+### If You Still Want to Sync the Version (Optional)
+Just watch out for one classic Apps Script trap so you don't break your GitHub Secret:
+* **Do NOT click `Deploy → New deployment`** (that generates a brand-new URL and breaks `GAS_WEBHOOK_URL` in GitHub).
+* Instead, go to **`Deploy → Manage deployments → Edit (pencil icon ✏️) → Version: New version → Deploy`**. That updates your code version while keeping the **exact same Web App URL** [1.1.1, 1.1.2].
 
 ---
 
 ## User
 
-I renamed it in drive. But, app script still shows 0 processed
+Updated it
 
 ---
 
 ## Model
 
-Look at your Drive screenshot—that explains it immediately!
+Awesome! Here is a quick verification tip, and then we’re ready for the **storage & `ai-kb` sync** step:
 
-Look at **`Google AI Studio/KB/English` (Modified 8:02 pm)** in `My Drive`:
-1. Unlike GitHub, **Google Drive does not create nested folders when you type `/`**—so it created one flat folder at the root of `My Drive` literally named `"Google AI Studio/KB/English"`.
-2. Because that folder sits at `My Drive` root (outside `Google AI Studio`) and its literal name isn't `"KB"`, Apps Script skipped it. *(Also remember: always put `[kb]` or `KB/` on your **source AI Studio chat files**, not the `.md` copies inside `AI Studio Markdown`.)*
+### 1. Quick Compute Check
+* Run **`flushPendingPdfsNow`** once in Apps Script (if you have any un-built PDFs) and check the **Actions** tab in `AI-Studio-pdf-worker`.
+* *Note:* The **first** run takes normal time while saving the cache; from the **second** run onward, it restores apt/pip/MathJax from cache and stays fast (and runs at most every 4 hours after 25 min idle).
 
 ---
 
-### Quick 2-Step Fix
+### 2. Next Up: Storage & Connecting to `ai-kb` (at 50 Chats/Day)
+Because your Apps Script **already** builds clean `.md` files in Drive every 15 minutes (using 0 GitHub minutes!) and can read your Drive folders (`Maths`, `Reasoning`, `General Awareness`, `English`), we can push `.md` files straight from Drive to `inikashx-hub/ai-kb` in batched commits.
 
-#### 1. (Optional Tidy-Up in Drive)
-You can either keep that folder as-is (the updated script below now handles `/` in Drive folder names too!), **or** organize cleanly as:
-* `My Drive` → create folder **`KB`** → create **`English`**, **`Maths`**, etc. inside **`KB`** → move source chats in.
-* **Or** leave chats inside `General Awareness` / `Google AI Studio` and just add **`[kb]`** to the chat filename.
+Before writing that sync, decide how you want to handle the **50 chats/day (~67.5 MB/month)** volume inside `ai-kb` so your RAG packs don't overflow the 20-URL / 35 KB limits:
 
-#### 2. Update Apps Script (Now Scans `My Drive/KB`, Handles `/`, & Logs Counts)
-Paste this updated complete code (adds `KB` root scanning, strips `My Drive` from paths, handles slash-named folders like `Google AI Studio/KB/English`, and prints `Scanned` + `KB tracked` counts in the log):
+* **Choice A — Selective Sync (Simplest):**
+  Keep all 50 chats/day in Drive (`AI Studio Markdown` + `AI Studio PDF`), and only auto-push **selected folders** or chats tagged **`[kb]`** into `ai-kb` (also keeps any `Private/` folder off your public repo).
+* **Choice B — Auto-Distill Before Sync (Best Long-Term for URL Context):**
+  Keep full 10k-token chats in Drive, and distill each chat into a **crisp 2–4 KB takeaway/cheat-sheet `.md`** before pushing to `ai-kb`—shrinking storage by **~15×** so 1-turn packs stay fast for months.
+* **Choice C — Sync All 50 Raw Chats/Day (High-Volume Setup):**
+  Push all study folders into `ai-kb` bucketed by **Subject + Month** (`chats/maths-2026-11/`), upgrade `build-kb.py` to a **2-level index (`llms.txt` → `llms-maths.txt`)**, and run `build-kb.yml` on a **6-hour schedule** instead of every commit so `.git` history doesn't bloat.
+
+Which path (`A`, `B`, or `C`) fits your daily study style best?
+
+---
+
+## User
+
+Compare the 3 choices across various parameters
+
+---
+
+## Model
+
+Here is a head-to-head comparison of **Choice A**, **Choice B**, and **Choice C** tailored specifically to your **50 chats/day (10k tokens each)** Banking-exam workflow:
+
+---
+
+### Side-by-Side Comparison
+
+| Parameter | **Choice A: Selective Sync** *(Tag / Folder Filter)* | **Choice B: Auto-Distill** *(10k → ~3 KB Notes)* | **Choice C: Full Raw 50/Day Sync** *(Monthly Shards + 2-Level Index)* |
+| :--- | :--- | :--- | :--- |
+| **Monthly `ai-kb` Growth** | **~5–15 MB / month** *(depends on how many you tag)* | **~4.5 MB / month** *(~15× smaller than raw)* | **~67.5 MB / month** raw + bundle churn |
+| **Git History Bloat Risk** | **Very Low** | **Very Low** | **High** *(needs 6-hr `cron` rebuilds + annual repo rotation)* |
+| **1-Turn Pack Compatibility** | **High** *(packs stay small for months)* | **Highest** *(hundreds of distilled chats fit in 1–3 URLs)* | **Low** *(subject packs overflow 20 URLs unless split by month)* |
+| **Turns Needed at Scale** | **1 Turn** (for packs) / **2 Turns** (`llms.txt`) | **1 Turn** (for almost everything) | **2 Turns** (within a subject index) / **3 Turns** (cross-month search) |
+| **Detail & Recall Accuracy** | **100% verbatim** on synced chats *(0% on unsynced)* | **High for concepts/tricks**, drops specific raw Q&As | **100% verbatim** across all 50 chats/day *(but noisy)* |
+| **Privacy Risk (Public Repo)** | **Very Low** *(only approved folders/tags leave Drive)* | **Medium** *(automated summaries could leak private topics unless filtered)* | **Highest** *(all non-excluded chats go public)* |
+| **Needs Gemini API Key?** | **No (100% No-API)** | **Yes** *(for automated background distilling)* — *or manual end-of-chat prompt* | **No (100% No-API)** |
+| **Daily Manual Effort** | **Low** *(tag `[kb]` or drop into `KB/` folder)* | **Zero** *(if automated)* | **Zero** *(just organize folders or let auto-router sort)* |
+| **Repo Lifespan Before Reset** | **1.5 – 3+ years** | **2 – 4+ years** | **~4 – 6 months** before rotating (`ai-kb-2026`, `ai-kb-2027`) |
+
+---
+
+### How They Compare on the 5 Things That Matter Most
+
+#### 1. Exam-Prep Accuracy (`Maths / Reasoning` vs. `General Awareness`)
+* **Choice B (Distill)** is **best for Maths, Reasoning & English rules**: In a 10k-token *Percentages* practice session, ~80% is trial-and-error chatter. Distilling keeps the **formulas, shortcuts, and mistakes you made**, giving Gemini super clean, noise-free context. *However*, it loses exact wording of individual GA MCQs or edge-case practice problems.
+* **Choice C (Full Raw)** keeps **every single question and step verbatim**, which helps if you later want to re-find a specific practice problem—but that extra chatter fills up your 35 KB URL chunks fast.
+* **Choice A (Selective)** gives you **full verbatim fidelity** on the chats that actually matter (concept sessions, GA compendiums, revision notes) while ignoring throwaway practice drills.
+
+#### 2. The Hidden "No-API" Catch in Choice B
+* Remember you originally wanted **no API usage**.
+* **Automated** distillation of 50 chats/day requires calling an LLM API (like Gemini API free tier) inside Apps Script or GitHub Actions.
+* **Zero-API workaround for Choice B:** Before ending a long study chat in AI Studio, you can ask `"Summarize all formulas, shortcuts, and traps from this chat into a clean cheat sheet"` and only sync *that*—or stick with Choice A / C for pure zero-API automation.
+
+#### 3. 1-Turn Speed vs. Multi-Turn Search
+* Because **Choice A and B** keep each subject small, your static **`packs/`** stay under ~5–8 URLs for months—keeping **true 1-Turn answers** alive.
+* In **Choice C**, `Maths` alone grows by ~10–15 MB/month (~300–450 URL chunks/month!). You can’t load 300 URLs in 1 turn, so you must split into `maths-2026-11`, `maths-2026-12` and navigate via **`llms.txt` → `llms-maths.txt` → Cold Bundle** (2–3 turns).
+
+#### 4. Privacy & Public Repo Safety
+* **Choice A** is the safest: your private/personal chats stay in Google Drive by default, and **only** study folders or `[kb]`-tagged chats ever touch your public `ai-kb` repo.
+* **Choice C** pushes almost everything by default unless you maintain a strict blocklist.
+
+#### 5. Repo Maintenance Over 6–12 Months
+* **Choice A & B** keep `ai-kb` compact and fast for years.
+* **Choice C** forces two extra safeguards: switching `build-kb.yml` from `on: push` to a **6-hour `cron` schedule** (to avoid 50×/day `.git` bundle rewrites) and starting a fresh archive repo every ~6 months.
+
+---
+
+### Practical Recommendation for Your Setup
+For Banking prep with **50 chats/day** and **zero APIs**, the sweet spot is **Choice A (Folder/Tag Selective Sync)** paired with your **Drive archive**:
+1. Let your **Apps Script** keep converting **all 50 chats/day** into clean `.md` + `.pdf` privately inside Google Drive.
+2. Auto-push **only** specific study folders (or chats with `[kb]` in the name, plus your GA compendiums) from Apps Script into `ai-kb` in **4-hour batches**—giving you **1-Turn speed**, **100% privacy control**, and **zero repo bloat**.
+3. *(If you ever want to search one of your 10,000 raw non-`[kb]` practice sessions later, you already have all of them neatly archived as clean `.md` and `.pdf` in Drive—or batchable into NotebookLM anytime.)*
+
+Which one (`A`, `B`, or `C`) do you want to implement?
+
+---
+
+## User
+
+Choice A
+
+---
+
+## Model
+
+Let's implement **Choice A (Selective Sync)**.
+
+Every 15 minutes, Apps Script will continue building clean `.md` files privately in Google Drive for **all 50 chats/day**. Then, in **4-hour batches** (after 15 minutes of idle time), it will push **only** selected study chats into `inikashx-hub/ai-kb` in **one single batched Git commit** (so `build-kb.yml` only rebuilds once per batch, keeping `.git` history tiny).
+
+---
+
+### How You Control What Goes to `ai-kb`
+Any chat stays **100% private in Google Drive** *unless* it matches one of these simple rules:
+1. **Tag in filename:** Add **`[kb]`** anywhere in the chat title/filename (e.g., `Percentages Tricks [kb]`) → syncs to `chats/<your-subject-folder>/...` in `ai-kb` (the `[kb]` tag is automatically stripped from the GitHub filename).
+2. **Core cheat sheets:** Add **`[core]`** in the filename (e.g., `Math Formulas [core]`) → syncs to `core/` in `ai-kb` (always loaded in Tier 1 `hot-core.md`).
+3. **Or use a `KB` folder:** Put files inside a folder named **`KB`** inside your AI Studio folder (e.g., `Google AI Studio/KB/Maths/...` or `Google AI Studio/KB/core/...`) → auto-syncs everything inside `KB/` without needing `[kb]` in every filename.
+
+---
+
+### Step 1: Give Apps Script Write Access to `ai-kb` (Important!)
+In Apps Script → **Project Settings → Script Properties**, check your `GITHUB_TOKEN`:
+* If your `GITHUB_TOKEN` is a fine-grained token scoped **only** to `AI-Studio-pdf-worker`, either:
+  * **Option 1:** Edit that token on GitHub to also grant **Contents: Read and write** on **`ai-kb`**, **OR**
+  * **Option 2:** Create a second fine-grained token for `ai-kb` (**Contents: Read and write**) and add it to Script Properties as **`AI_KB_TOKEN`** (the script checks `AI_KB_TOKEN` first and falls back to `GITHUB_TOKEN`).
+
+---
+
+### Step 2: Replace Your Google Apps Script with This Complete Code
+Select all, delete your old script, paste this in, and save (`syncCleanMarkdown` stays on your existing 15-minute trigger, and you get a new **`flushKbSyncNow()`** function if you ever want an immediate push to `ai-kb`!):
 
 ```javascript
 /**
@@ -252,7 +261,6 @@ function syncCleanMarkdown_(forcePdfFlush, forceKbFlush) {
     const { token, kbToken } = getSecrets_();
     const mdFolder = getOrCreateFolder_(CONFIG.MD_FOLDER_NAME);
     const pdfFolder = getOrCreateFolder_(CONFIG.PDF_FOLDER_NAME);
-    const rootId = DriveApp.getRootFolder().getId();
     const visited = new Set([mdFolder.getId(), pdfFolder.getId()]);
 
     const props = PropertiesService.getScriptProperties();
@@ -293,9 +301,9 @@ function syncCleanMarkdown_(forcePdfFlush, forceKbFlush) {
       let prev = {};
       if (stateMap[key]) { try { prev = JSON.parse(stateMap[key]); } catch (e) {} }
 
-      const targetKbPath = resolveKbTarget_(file, cleanName_(file.getName()), rootId);
+      const targetKbPath = resolveKbTarget_(file, cleanName_(file.getName()));
       const needsMd = prev.t !== updatedMs || !prev.m;
-      const needsKbPathSync = (targetKbPath || '') !== (prev.kbTarget || '') || (targetKbPath || '') !== (prev.kbP || '');
+      const needsKbPathSync = (targetKbPath || '') !== (prev.kbP || '');
       if (!needsMd && !needsKbPathSync) continue;
 
       if (needsMd) {
@@ -434,11 +442,10 @@ function syncCleanMarkdown_(forcePdfFlush, forceKbFlush) {
       }
     }
 
-    // PHASE 3: Batched Selective Sync to Public ai-kb Repo
+    // PHASE 3: Batched Selective Sync to Public ai-kb Repo (1 single commit for all changed [kb]/[core] files)
     const lastKbMs = Number(props.getProperty(CONFIG.KB_DISPATCH_STATE_KEY) || 0);
     const canDispatchKb = forceKbFlush || (Date.now() - lastKbMs >= CONFIG.KB_BATCH_HOURS * 60 * 60 * 1000);
     const kbIdleMs = CONFIG.KB_IDLE_MINUTES * 60 * 1000;
-    let kbTrackedCount = 0;
 
     if (canDispatchKb && !paused) {
       const kbOps = [];
@@ -455,7 +462,6 @@ function syncCleanMarkdown_(forcePdfFlush, forceKbFlush) {
 
         const targetPath = prev.kbTarget || null;
         const oldPath = prev.kbP || null;
-        if (targetPath) kbTrackedCount++;
         if (!targetPath && !oldPath) continue;
         if (targetPath && prev.kbT === prev.t && oldPath === targetPath) continue;
         if (!forceKbFlush && (Date.now() - prev.t < kbIdleMs)) continue;
@@ -464,6 +470,7 @@ function syncCleanMarkdown_(forcePdfFlush, forceKbFlush) {
         let srcFile;
         try { srcFile = DriveApp.getFileById(id); } catch (e) { continue; }
 
+        // If source file was trashed or [kb] tag removed, delete old file from ai-kb
         if (srcFile.isTrashed() || !targetPath) {
           if (oldPath) {
             kbOps.push({ path: oldPath, content: null });
@@ -512,8 +519,8 @@ function syncCleanMarkdown_(forcePdfFlush, forceKbFlush) {
     }
 
     console.log(paused
-      ? `Paused at time guard. Scanned: ${files.length}, MD: ${mdCount}, KB tracked: ${kbTrackedCount}, PDF queued: ${queuedPdfCount}, ai-kb synced: ${kbSyncedCount}.`
-      : `Done! Scanned: ${files.length}, MD: ${mdCount}, KB tracked: ${kbTrackedCount}, PDF queued: ${queuedPdfCount}, ai-kb synced: ${kbSyncedCount}`);
+      ? `Paused at time guard. MD: ${mdCount}, PDF queued: ${queuedPdfCount}, KB synced: ${kbSyncedCount}.`
+      : `Done! MD: ${mdCount}, PDF batch queued: ${queuedPdfCount}, ai-kb synced: ${kbSyncedCount}`);
   } finally {
     cache.remove('gh_sync_running');
   }
@@ -542,7 +549,7 @@ function sanitizePathSlug_(name) {
   return String(name || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'general';
 }
 
-function resolveKbTarget_(file, baseName, rootId) {
+function resolveKbTarget_(file, baseName) {
   const rawName = file.getName();
   const isCoreTag = CONFIG.KB_CORE_TAG_REGEX.test(rawName);
   const isKbTag = CONFIG.KB_TAG_REGEX.test(rawName);
@@ -553,15 +560,9 @@ function resolveKbTarget_(file, baseName, rootId) {
     const parents = cur.getParents();
     if (!parents.hasNext()) break;
     const parent = parents.next();
-    if (rootId && parent.getId() === rootId) break;
     const pName = parent.getName();
     if (CONFIG.SOURCE_FOLDER_NAMES.some(n => n.toLowerCase() === pName.toLowerCase())) break;
-    const segs = pName.split('/').map(s => s.trim()).filter(Boolean);
-    for (let i = segs.length - 1; i >= 0; i--) {
-      if (!CONFIG.SOURCE_FOLDER_NAMES.some(n => n.toLowerCase() === segs[i].toLowerCase())) {
-        chain.unshift(segs[i]);
-      }
-    }
+    chain.unshift(pName);
     cur = parent;
   }
 
@@ -607,6 +608,7 @@ function pushBatchToGitHubRepo_(owner, repo, branch, ops, commitMessage, token) 
   const treeEntries = [];
   for (const op of ops) {
     if (op.content === null) {
+      // Only delete if path actually exists on remote branch
       const chk = UrlFetchApp.fetch(`${baseApi}/contents/${encodeURI(op.path)}?ref=${branch}`, {
         method: 'get', headers, muteHttpExceptions: true
       });
@@ -719,109 +721,3 @@ function doPost(e) {
       const bytes = existing.getBlob().getBytes();
       return jsonResponse_({ ok: true, pdfB64: Utilities.base64Encode(bytes) });
     }
-
-    const lock = LockService.getScriptLock();
-    lock.waitLock(30000);
-    try {
-      const pdfFolder = getOrCreateFolder_(CONFIG.PDF_FOLDER_NAME);
-      const props = PropertiesService.getScriptProperties();
-      const key = CONFIG.STATE_PREFIX + payload.sourceId;
-
-      let prev = {};
-      const raw = props.getProperty(key);
-      if (raw) { try { prev = JSON.parse(raw); } catch (err) {} }
-
-      if (payload.mode === 'append' && typeof payload.expectedTc === 'number' &&
-          typeof prev.tc === 'number' && prev.tc !== payload.expectedTc) {
-        return jsonResponse_({ ok: false, error: 'Stale delta: expectedTc mismatch' });
-      }
-
-      if (prev.p && payload.mode !== 'new_part') {
-        try {
-          const old = DriveApp.getFileById(prev.p);
-          if (!old.isTrashed()) old.setTrashed(true);
-        } catch (err) {}
-      }
-      const dupes = pdfFolder.getFilesByName(payload.pdfName);
-      while (dupes.hasNext()) {
-        const df = dupes.next();
-        if (!df.isTrashed()) df.setTrashed(true);
-      }
-
-      const bytes = Utilities.base64Decode(payload.pdfB64);
-      const blob = Utilities.newBlob(bytes, 'application/pdf', payload.pdfName);
-      const created = pdfFolder.createFile(blob);
-
-      prev.p = created.getId();
-      prev.pt = payload.updatedMs;
-      if (typeof payload.nextTc === 'number') prev.tc = payload.nextTc;
-      if (payload.nextTh) prev.th = payload.nextTh;
-      prev.part = payload.part || 1;
-      prev.partStartTc = payload.partStartTc || 0;
-      delete prev.qa;
-      props.setProperty(key, JSON.stringify(prev));
-
-      return jsonResponse_({ ok: true, pdfId: created.getId() });
-    } finally {
-      lock.releaseLock();
-    }
-  } catch (err) {
-    return jsonResponse_({ ok: false, error: err.message });
-  }
-}
-
-function jsonResponse_(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
-}
-
-function pushJobToGitHub_(path, obj, token) {
-  const url = `https://api.github.com/repos/${CONFIG.GITHUB_OWNER}/${CONFIG.GITHUB_REPO}/contents/${path}`;
-  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
-
-  let sha = null;
-  const getResp = UrlFetchApp.fetch(url, { method: 'get', headers, muteHttpExceptions: true });
-  if (getResp.getResponseCode() === 200) {
-    try { sha = JSON.parse(getResp.getContentText()).sha; } catch (e) {}
-  }
-
-  const body = {
-    message: `Queue ${path}`,
-    content: Utilities.base64Encode(JSON.stringify(obj), Utilities.Charset.UTF_8),
-    branch: CONFIG.GITHUB_BRANCH
-  };
-  if (sha) body.sha = sha;
-
-  const putResp = UrlFetchApp.fetch(url, {
-    method: 'put', contentType: 'application/json', headers,
-    payload: JSON.stringify(body), muteHttpExceptions: true
-  });
-  const code = putResp.getResponseCode();
-  if (code !== 200 && code !== 201) {
-    console.error(`GitHub PUT failed (${code}): ${putResp.getContentText()}`);
-    return false;
-  }
-  return true;
-}
-
-function triggerGitHubWorkflow_(token) {
-  const url = `https://api.github.com/repos/${CONFIG.GITHUB_OWNER}/${CONFIG.GITHUB_REPO}/actions/workflows/build-pdfs.yml/dispatches`;
-  const resp = UrlFetchApp.fetch(url, {
-    method: 'post', contentType: 'application/json',
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
-    payload: JSON.stringify({ ref: CONFIG.GITHUB_BRANCH }), muteHttpExceptions: true
-  });
-  const code = resp.getResponseCode();
-  if (code !== 204 && code !== 200) {
-    console.error(`GitHub workflow trigger failed (${code}): ${resp.getContentText()}`);
-  }
-}
-
-/* ===== Text Cleaning & Extraction ===== */
-
-function joinStreamText_(a, b) {
-  if (!a) return b || '';
-  if (!b) return a;
-  if (/\s$/.test(a) || /^\s/.test(b)) return a + b;
-  if (/^[,.;:!?)}\]'"*]/.test(b) || /[(\[{\"'*-]$/.test(a)) return a + b;
-  return a + ' ' + b;
-}

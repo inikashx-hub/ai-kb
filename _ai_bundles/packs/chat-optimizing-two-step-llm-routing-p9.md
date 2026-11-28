@@ -1,12 +1,108 @@
-# Subject Pack: ch04-enforce-strict-router-grounding (Part 9/14)
+# Subject Pack: chat-optimizing-two-step-llm-routing (Part 9/14)
 
 
 ---
-## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 12/17 — 4. Enforce Strict Router & Grounding Rules]
+## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 9/14]
 
-## [Chapter Context: 4. Enforce Strict Router & Grounding Rules]
+#### 1. Separate Fast `.md` Conversion from Heavy `.pdf` Rendering
+* **`.md` conversion (`JSON → .md`)** is pure text parsing—converting 25 AI Studio JSONs in one Python batch takes **< 2 seconds** (or can even run directly inside Google Apps Script using `JSON.parse()` for **0 GitHub minutes**!).
+* **`.pdf` conversion** (especially if you render math/LaTeX formulas) is the heavy step that pushes jobs past the 60-second line (`1 min → 2 min` billing).
+* **The Fix:** You don't need a rebuilt `.pdf` every 15 minutes while you are actively studying. Run **`.pdf` rendering in 1–2 batches per day** (or only every 4–6 hours on **finished/idle** chats), while `.md` can update much more often at virtually zero cost.
 
-prev.p = created.getId; prev.pt = payload.updatedMs; if (typeof payload.nextTc === 'number') prev.tc = payload.nextTc; if (payload.nextTh) prev.th = payload.nextTh; prev.part = payload.part || 1; prev.partStartTc = payload.partStartTc || 0; delete prev.qa; props.setProperty(key, JSON.stringify(prev));
+#### 2. Add a 20–30 Minute "Idle Debounce" + Batch Queue
+* Let Apps Script run on its 15-minute check using **`modifiedDate > lastSyncTime`** (takes ~1–2 seconds, protecting your 90 min/day Apps Script quota).
+* **Debounce rule:** Do **not** queue an active JSON while you are still studying in it! Only queue a JSON once its Drive `lastUpdated` timestamp is **at least 20–30 minutes old** (idle/finished).
+* **Batch dispatch:** Trigger your private GitHub Action **once every 4 hours** (max 6 runs/day, and **skip completely** if nothing changed). Inside that single VM boot, loop through **all queued JSONs in one pass** (starting your PDF engine *once* instead of 50 times).
+* **New Compute Math:** `4–6 batch runs/day × 1–2 min × 30 days` = **~120–360 min/month** (comfortably inside your **2,000 min/month** free quota, even at 50 chats/day!).
+
+#### 3. Cache Your PDF Tools (`actions/cache`)
+If your private workflow installs `pandoc`/`texlive`, `weasyprint`, or `playwright`/Chromium on every run, that wastes 45–90 seconds per job before converting a single file. Adding `actions/cache` (or a pre-built container) drops setup down to ~5–10 seconds.
+
+---
+
+### Ready to Patch Your Private Pipeline?
+Paste your **private repo’s `.github/workflows/*.yml`** and your **Google Apps Script code** here (**make sure to delete/mask any GitHub tokens or Drive folder IDs first!**).
+
+I’ll inspect how it currently triggers and converts, and give you the exact **batch + idle-debounce + cache** update to slash your GitHub Actions minutes first—before we connect the `.md` output into `ai-kb`.
+
+---
+
+## User
+
+Apps script code: /**
+ * Syncs AI Studio chats -> Clean .md in Drive -> Private GitHub Actions -> Incremental PDFs via doPost
+ * Reads GITHUB_TOKEN and CALLBACK_SECRET safely from Project Settings -> Script Properties.
+ */ const CONFIG = { SOURCE_FOLDER_NAMES: ['Google AI Studio', 'AI Studio'], MD_FOLDER_NAME: 'AI Studio Markdown', PDF_FOLDER_NAME: 'AI Studio PDF',
+
+  GITHUB_OWNER: 'inikashx-hub', GITHUB_REPO: 'AI-Studio-pdf-worker', GITHUB_BRANCH: 'main',
+
+  INCLUDE_THOUGHTS: false, INCLUDE_METADATA: true, STATE_PREFIX: 'gh_sync_', MAX_SINGLE_PDF_BYTES: 15 * 1024 * 1024 };
+
+function getSecrets_ { const props = PropertiesService.getScriptProperties; const token = (props.getProperty('GITHUB_TOKEN') || '').trim; const secret = (props.getProperty('CALLBACK_SECRET') || '').trim; if (!token || !secret) { throw new Error('Missing GITHUB_TOKEN or CALLBACK_SECRET in Project Settings -> Script Properties.'); } return { token, secret }; }
+
+function hashTurns_(turns) { const raw = JSON.stringify(turns); const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, raw, Utilities.Charset.UTF_8); return digest.map(b => ('0' + ((b & 0xff).toString(16))).slice(-2)).join(''); }
+
+function syncCleanMarkdown { const cache = CacheService.getScriptCache; if (cache.get('gh_sync_running')) return; cache.put('gh_sync_running', '1', 300);
+
+  const startTime = Date.now;
+
+  try { const { token } = getSecrets_; const mdFolder = getOrCreateFolder_(CONFIG.MD_FOLDER_NAME); const pdfFolder = getOrCreateFolder_(CONFIG.PDF_FOLDER_NAME); const visited = new Set([mdFolder.getId, pdfFolder.getId]);
+
+    const files = []; for (const f of getSourceFolders_) collectFiles_(f, visited, files);
+
+    const seen = new Set(files.map(f => f.getId)); try { const q = DriveApp.searchFiles('mimeType = "application/vnd.google-makersuite.prompt" and trashed = false'); while (q.hasNext) { const pf = q.next; if (!seen.has(pf.getId)) { seen.add(pf.getId); files.push(pf); } } } catch (e) {}
+
+    const props = PropertiesService.getScriptProperties; const stateMap = props.getProperties; let mdCount = 0, queuedCount = 0, paused = false;
+
+    for (const file of files) { if (Date.now - startTime > 220000) { paused = true; break; } if (file.isTrashed) continue; const mime = file.getMimeType; if (mime.startsWith('application/vnd.google-apps.') || mime.startsWith('image/') || mime.startsWith('video/') || mime.startsWith('audio/') || mime === 'application/pdf') continue;
+
+      const id = file.getId; const updatedMs = file.getLastUpdated.getTime; const key = CONFIG.STATE_PREFIX + id; let prev = {}; if (stateMap[key]) { try { prev = JSON.parse(stateMap[key]); } catch (e) {} }
+
+      const needsMd = prev.t !== updatedMs || !prev.m; const jobInFlight = prev.qa && (Date.now - prev.qa < 15 * 60 * 1000); const needsPdf = (prev.pt !== updatedMs || !prev.p) && !jobInFlight;
+
+      if (!needsMd && !needsPdf) continue; if (file.getSize > 15 * 1024 * 1024) continue;
+
+      let data; try { data = JSON.parse(file.getBlob.getDataAsString('UTF-8')); } catch (e) { continue; } if (!data || (!data.chunkedPrompt && !data.contents && !data.runSettings)) continue;
+
+      const chat = extractCleanChat_(data, file); const baseName = cleanName_(file.getName); const mdName = `${baseName}.md`; const fullMdText = renderCleanMd_(chat);
+
+      let mdId = prev.m || null; if (needsMd) { if (!mdId) { const byName = mdFolder.getFilesByName(mdName); while (byName.hasNext) { const ef = byName.next; if (!ef.isTrashed) { mdId = ef.getId; break; } } } let updated = false; if (mdId) { try { const ex = DriveApp.getFileById(mdId); if (!ex.isTrashed) { ex.setContent(fullMdText); if (ex.getName !== mdName) ex.setName(mdName); updated = true; } } catch (e) {} } if (!updated) mdId = mdFolder.createFile(Utilities.newBlob(fullMdText, 'text/markdown', mdName)).getId; prev.t = updatedMs; prev.m = mdId; mdCount++; }
+
+      if (needsPdf) { const fullTc = chat.turns.length; const fullTh = hashTurns_(chat.turns); let mode = 'full'; let part = 1; let partStartTc = 0; let expectedTc = 0; let existingPdfId = null; let pdfName = `${baseName}.pdf`; let turnsForPdf = chat.turns; let jobMdText = fullMdText; let skipQueue = false;
+
+        if (prev.p && typeof prev.tc === 'number' && prev.tc > 0 && prev.tc <= fullTc && prev.th) { const prefixHash = hashTurns_(chat.turns.slice(0, prev.tc)); if (prefixHash === prev.th) { try { const existingPdf = DriveApp.getFileById(prev.p); if (!existingPdf.isTrashed) { const curPart = prev.part || 1; const curPdfName = curPart > 1 ? `${baseName} (Part ${curPart}).pdf` : `${baseName}.pdf`;
+
+                if (fullTc === prev.tc) { if (existingPdf.getName !== curPdfName) existingPdf.setName(curPdfName); prev.pt = updatedMs; skipQueue = true; } else if (existingPdf.getSize < CONFIG.MAX_SINGLE_PDF_BYTES) { mode = 'append'; part = curPart; partStartTc = prev.partStartTc || 0; expectedTc = prev.tc; existingPdfId = prev.p; pdfName = curPdfName; turnsForPdf = chat.turns.slice(prev.tc); jobMdText = renderContinuationMd_(chat, turnsForPdf, prev.tc, fullTc, null); } else { mode = 'new_part'; part = curPart + 1; partStartTc = prev.tc; expectedTc = prev.tc; existingPdfId = null; pdfName = `${baseName} (Part ${part}).pdf`; turnsForPdf = chat.turns.slice(prev.tc); jobMdText = renderContinuationMd_(chat, turnsForPdf, prev.tc, fullTc, part); } } } catch (e) {} } }
+
+        if (!skipQueue) { const assets = collectAssets_(turnsForPdf); const jobPayload = { sourceId: id, updatedMs, baseName, pdfName, mode, existingPdfId, expectedTc, nextTc: fullTc, nextTh: fullTh, part, partStartTc, mdText: jobMdText, assets }; if (pushJobToGitHub_(`jobs/${id}.json`, jobPayload, token)) { prev.qt = updatedMs; prev.qa = Date.now; queuedCount++; } } }
+
+      const pLock = LockService.getScriptLock; pLock.waitLock(10000); try { let latest = {}; const latestRaw = props.getProperty(key); if (latestRaw) { try { latest = JSON.parse(latestRaw); } catch (e) {} } props.setProperty(key, JSON.stringify(Object.assign({}, latest, prev))); } finally { pLock.releaseLock; } }
+
+    if (queuedCount > 0) { triggerGitHubWorkflow_(token); }
+
+    console.log(paused ? `Paused at time guard. MD: ${mdCount}, Queued for PDF: ${queuedCount}. Run again to queue remaining.` : `Done! MD updated: ${mdCount}, Queued for GitHub PDF build: ${queuedCount}`); } finally { cache.remove('gh_sync_running'); } }
+
+function collectAssets_(turns) { const assets = []; for (const turn of turns) { for (const item of turn.items) { if (item.type === 'image_b64' && item.data && item.data.length < 7000000) { assets.push({ mimeType: item.mimeType || 'image/png', dataB64: item.data }); } else if (item.type === 'image_drive') { try { const blob = DriveApp.getFileById(item.fileId).getBlob; const bytes = blob.getBytes; if (bytes.length < 5 * 1024 * 1024) { assets.push({ mimeType: blob.getContentType || 'image/png', dataB64: Utilities.base64Encode(bytes) }); } } catch (e) {} } } } return assets; }
+
+function requeueAllPastChats { const props = PropertiesService.getScriptProperties; const all = props.getProperties; let resetCount = 0;
+
+  for (const key of Object.keys(all)) { if (!key.startsWith(CONFIG.STATE_PREFIX)) continue; try { const st = JSON.parse(all[key]); delete st.t; delete st.pt; delete st.qt; delete st.qa; delete st.tc; delete st.th; delete st.part; delete st.partStartTc; props.setProperty(key, JSON.stringify(st)); resetCount++; } catch (e) {} } console.log(`Reset ${resetCount} chat(s). Running syncCleanMarkdown() now...`); syncCleanMarkdown; }
+
+function doPost(e) { try { const { secret } = getSecrets_; const payload = JSON.parse(e.postData.contents); if (!payload || payload.secret !== secret) { return jsonResponse_({ ok: false, error: 'Unauthorized' }); }
+
+    if (payload.action === 'get_pdf') { const existing = DriveApp.getFileById(payload.fileId); if (existing.isTrashed) { return jsonResponse_({ ok: false, error: 'Existing PDF is trashed' }); } const bytes = existing.getBlob.getBytes; return jsonResponse_({ ok: true, pdfB64: Utilities.base64Encode(bytes) }); }
+
+    const lock = LockService.getScriptLock; lock.waitLock(30000); try { const pdfFolder = getOrCreateFolder_(CONFIG.PDF_FOLDER_NAME); const props = PropertiesService.getScriptProperties; const key = CONFIG.STATE_PREFIX + payload.sourceId;
+
+      let prev = {}; const raw = props.getProperty(key); if (raw) { try { prev = JSON.parse(raw); } catch (err) {} }
+
+      if (payload.mode === 'append' && typeof payload.expectedTc === 'number' && typeof prev.tc === 'number' && prev.tc !== payload.expectedTc) { return jsonResponse_({ ok: false, error: 'Stale delta: expectedTc mismatch' }); }
+
+      if (prev.p && payload.mode !== 'new_part') { try { const old = DriveApp.getFileById(prev.p); if (!old.isTrashed) old.setTrashed(true); } catch (err) {} } const dupes = pdfFolder.getFilesByName(payload.pdfName); while (dupes.hasNext) { const df = dupes.next; if (!df.isTrashed) df.setTrashed(true); }
+
+      const bytes = Utilities.base64Decode(payload.pdfB64); const blob = Utilities.newBlob(bytes, 'application/pdf', payload.pdfName); const created = pdfFolder.createFile(blob);
+
+      prev.p = created.getId; prev.pt = payload.updatedMs; if (typeof payload.nextTc === 'number') prev.tc = payload.nextTc; if (payload.nextTh) prev.th = payload.nextTh; prev.part = payload.part || 1; prev.partStartTc = payload.partStartTc || 0; delete prev.qa; props.setProperty(key, JSON.stringify(prev));
 
       return jsonResponse_({ ok: true, pdfId: created.getId }); } finally { lock.releaseLock; } } catch (err) { return jsonResponse_({ ok: false, error: err.message }); } }
 
@@ -322,296 +418,3 @@ function syncCleanMarkdown_(forceFlush) {
     const batchCooldownMs = CONFIG.PDF_BATCH_HOURS * 60 * 60 * 1000;
     const idleThresholdMs = CONFIG.PDF_IDLE_MINUTES * 60 * 1000;
     const canDispatchPdf = forceFlush || (Date.now() - lastDispatchMs >= batchCooldownMs);
-
-    if (canDispatchPdf && !paused) {
-      for (const key of Object.keys(stateMap)) {
-        if (!key.startsWith(CONFIG.STATE_PREFIX)) continue;
-        if (Date.now() - startTime > 220000) { paused = true; break; }
-
-        let prev = {};
-        try { prev = JSON.parse(stateMap[key]); } catch (e) { continue; }
-        if (!prev.t) continue;
-
-        const jobInFlight = prev.qa && (Date.now() - prev.qa < 20 * 60 * 1000);
-        const needsPdf = (prev.pt !== prev.t || !prev.p) && !jobInFlight;
-        if (!needsPdf) continue;
-
-        if (!forceFlush && (Date.now() - prev.t < idleThresholdMs)) continue;
-
-        const id = key.slice(CONFIG.STATE_PREFIX.length);
-        let file;
-        try { file = DriveApp.getFileById(id); } catch (e) { continue; }
-        if (file.isTrashed() || file.getSize() > 15 * 1024 * 1024) continue;
-
-        const updatedMs = file.getLastUpdated().getTime();
-        if (!forceFlush && (Date.now() - updatedMs < idleThresholdMs)) continue;
-
-        let data;
-        try { data = JSON.parse(file.getBlob().getDataAsString('UTF-8')); } catch (e) { continue; }
-        if (!data || (!data.chunkedPrompt && !data.contents && !data.runSettings)) continue;
-
-        const chat = extractCleanChat_(data, file);
-        const baseName = cleanName_(file.getName());
-        const fullMdText = renderCleanMd_(chat);
-
-        const fullTc = chat.turns.length;
-        const fullTh = hashTurns_(chat.turns);
-        let mode = 'full', part = 1, partStartTc = 0, expectedTc = 0, existingPdfId = null;
-        let pdfName = `${baseName}.pdf`, turnsForPdf = chat.turns, jobMdText = fullMdText, skipQueue = false;
-
-        if (prev.p && typeof prev.tc === 'number' && prev.tc > 0 && prev.tc <= fullTc && prev.th) {
-          const prefixHash = hashTurns_(chat.turns.slice(0, prev.tc));
-          if (prefixHash === prev.th) {
-            try {
-              const existingPdf = DriveApp.getFileById(prev.p);
-              if (!existingPdf.isTrashed()) {
-                const curPart = prev.part || 1;
-                const curPdfName = curPart > 1 ? `${baseName} (Part ${curPart}).pdf` : `${baseName}.pdf`;
-
-                if (fullTc === prev.tc) {
-                  if (existingPdf.getName() !== curPdfName) existingPdf.setName(curPdfName);
-                  prev.pt = updatedMs;
-                  skipQueue = true;
-                } else if (existingPdf.getSize() < CONFIG.MAX_SINGLE_PDF_BYTES) {
-                  mode = 'append';
-                  part = curPart;
-                  partStartTc = prev.partStartTc || 0;
-                  expectedTc = prev.tc;
-                  existingPdfId = prev.p;
-                  pdfName = curPdfName;
-                  turnsForPdf = chat.turns.slice(prev.tc);
-                  jobMdText = renderContinuationMd_(chat, turnsForPdf, prev.tc, fullTc, null);
-                } else {
-                  mode = 'new_part';
-                  part = curPart + 1;
-                  partStartTc = prev.tc;
-                  expectedTc = prev.tc;
-                  existingPdfId = null;
-                  pdfName = `${baseName} (Part ${part}).pdf`;
-                  turnsForPdf = chat.turns.slice(prev.tc);
-                  jobMdText = renderContinuationMd_(chat, turnsForPdf, prev.tc, fullTc, part);
-                }
-              }
-            } catch (e) {}
-          }
-        }
-
-        if (!skipQueue) {
-          const assets = collectAssets_(turnsForPdf);
-          const jobPayload = {
-            sourceId: id, updatedMs, baseName, pdfName, mode, existingPdfId,
-            expectedTc, nextTc: fullTc, nextTh: fullTh, part, partStartTc,
-            mdText: jobMdText, assets
-          };
-          if (pushJobToGitHub_(`jobs/${id}.json`, jobPayload, token)) {
-            prev.qt = updatedMs;
-            prev.qa = Date.now();
-            queuedCount++;
-          }
-        }
-
-        const pLock = LockService.getScriptLock();
-        pLock.waitLock(10000);
-        try {
-          let latest = {};
-          const latestRaw = props.getProperty(key);
-          if (latestRaw) { try { latest = JSON.parse(latestRaw); } catch (e) {} }
-          props.setProperty(key, JSON.stringify(Object.assign({}, latest, prev)));
-        } finally {
-          pLock.releaseLock();
-        }
-      }
-
-      if (queuedCount > 0) {
-        triggerGitHubWorkflow_(token);
-        if (!paused) {
-          props.setProperty(CONFIG.DISPATCH_STATE_KEY, String(Date.now()));
-        }
-      }
-    }
-
-    console.log(paused
-      ? `Paused at time guard. MD: ${mdCount}, Queued for PDF: ${queuedCount}.`
-      : `Done! MD updated: ${mdCount}, Queued for GitHub PDF batch: ${queuedCount}`);
-  } finally {
-    cache.remove('gh_sync_running');
-  }
-}
-```
-
-#### B. Update `requeueAllPastChats()` and `collectFiles_()` (Keep everything else untouched!):
-Replace `requeueAllPastChats()` with:
-```javascript
-function requeueAllPastChats() {
-  const props = PropertiesService.getScriptProperties();
-  props.deleteProperty(CONFIG.SCAN_STATE_KEY);
-  props.deleteProperty(CONFIG.DISPATCH_STATE_KEY);
-  const all = props.getProperties();
-  let resetCount = 0;
-
-  for (const key of Object.keys(all)) {
-    if (!key.startsWith(CONFIG.STATE_PREFIX)) continue;
-    try {
-      const st = JSON.parse(all[key]);
-      delete st.t; delete st.pt; delete st.qt; delete st.qa;
-      delete st.tc; delete st.th; delete st.part; delete st.partStartTc;
-      props.setProperty(key, JSON.stringify(st));
-      resetCount++;
-    } catch (e) {}
-  }
-  console.log(`Reset ${resetCount} chat(s). Running flushPendingPdfsNow()...`);
-  syncCleanMarkdown_(true);
-}
-```
-
-And replace `collectFiles_` at the very bottom with:
-```javascript
-function collectFiles_(folder, visited, out, sinceIso) {
-  const id = folder.getId();
-  if (visited.has(id)) return;
-  visited.add(id);
-  const fi = sinceIso
-    ? folder.searchFiles(`trashed = false and modifiedDate > "${sinceIso}"`)
-    : folder.getFiles();
-  while (fi.hasNext()) out.push(fi.next());
-  const si = folder.getFolders();
-  while (si.hasNext()) {
-    const s = si.next();
-    if (!s.isTrashed()) collectFiles_(s, visited, out, sinceIso);
-  }
-}
-```
-
----
-
-### Expected Compute After This Patch
-* **Apps Script:** ~1–3 seconds per 15-minute check (~3–5 min/day vs. 90-min limit).
-* **Private GitHub Actions:** Max ~6 batched PDF runs/day, ~1 min each with cache = **~180–250 min/month** (out of your 2,000-minute free quota).
-* **One future note:** Apps Script `ScriptProperties` has a **500 KB** total storage limit—at ~230 bytes per chat state record, you're completely fine up to ~2,000 chats (later you can archive old `gh_sync_` entries or move them to a Google Sheet).
-
-Once you test `flushPendingPdfsNow()` and see the cached `build-pdfs.yml` finish cleanly, we’re ready to tackle **storage & smart filtering into `ai-kb`**!
-
----
-
-## User
-
-Give me the complete updated javascript code; so that, I can paste and delete the old one
-
----
-
-## Model
-
-Here is the **complete, ready-to-paste Google Apps Script code**. You can select all, delete your old script, paste this in, and save—your existing 15-minute trigger (`syncCleanMarkdown`) and `ScriptProperties` secrets will continue working without needing any reconfiguration.
-
-```javascript
-/**
- * Syncs AI Studio chats -> Clean .md in Drive -> Batched & Idle-Debounced Private GitHub Actions -> Incremental PDFs via doPost()
- * Reads GITHUB_TOKEN and CALLBACK_SECRET safely from Project Settings -> Script Properties.
- */
-const CONFIG = {
-  SOURCE_FOLDER_NAMES: ['Google AI Studio', 'AI Studio'],
-  MD_FOLDER_NAME: 'AI Studio Markdown',
-  PDF_FOLDER_NAME: 'AI Studio PDF',
-
-  GITHUB_OWNER: 'inikashx-hub',
-  GITHUB_REPO: 'AI-Studio-pdf-worker',
-  GITHUB_BRANCH: 'main',
-
-  INCLUDE_THOUGHTS: false,
-  INCLUDE_METADATA: true,
-  STATE_PREFIX: 'gh_sync_',
-  SCAN_STATE_KEY: 'gh_last_scan_ms',
-  DISPATCH_STATE_KEY: 'gh_last_pdf_dispatch_ms',
-
-  PDF_IDLE_MINUTES: 25,       // Only build PDF after chat has been idle for 25 min
-  PDF_BATCH_HOURS: 4,         // Trigger GitHub PDF batch at most every 4 hours (max 6x/day)
-  MAX_SINGLE_PDF_BYTES: 15 * 1024 * 1024
-};
-
-function getSecrets_() {
-  const props = PropertiesService.getScriptProperties();
-  const token = (props.getProperty('GITHUB_TOKEN') || '').trim();
-  const secret = (props.getProperty('CALLBACK_SECRET') || '').trim();
-  if (!token || !secret) {
-    throw new Error('Missing GITHUB_TOKEN or CALLBACK_SECRET in Project Settings -> Script Properties.');
-  }
-  return { token, secret };
-}
-
-function hashTurns_(turns) {
-  const raw = JSON.stringify(turns);
-  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, raw, Utilities.Charset.UTF_8);
-  return digest.map(b => ('0' + ((b & 0xff).toString(16))).slice(-2)).join('');
-}
-
-function syncCleanMarkdown() {
-  syncCleanMarkdown_(false);
-}
-
-// Run this manually from the Apps Script editor anytime you want pending PDFs built immediately
-function flushPendingPdfsNow() {
-  syncCleanMarkdown_(true);
-}
-
-function syncCleanMarkdown_(forceFlush) {
-  const cache = CacheService.getScriptCache();
-  if (cache.get('gh_sync_running')) return;
-  cache.put('gh_sync_running', '1', 300);
-
-  const startTime = Date.now();
-
-  try {
-    const { token } = getSecrets_();
-    const mdFolder = getOrCreateFolder_(CONFIG.MD_FOLDER_NAME);
-    const pdfFolder = getOrCreateFolder_(CONFIG.PDF_FOLDER_NAME);
-    const visited = new Set([mdFolder.getId(), pdfFolder.getId()]);
-
-    const props = PropertiesService.getScriptProperties();
-    const lastScanMs = Number(props.getProperty(CONFIG.SCAN_STATE_KEY) || 0);
-    // 5-minute overlap prevents missing files during Drive index lag
-    const sinceIso = (!forceFlush && lastScanMs > 0)
-      ? new Date(lastScanMs - 5 * 60 * 1000).toISOString()
-      : '';
-
-    const files = [];
-    for (const f of getSourceFolders_()) collectFiles_(f, visited, files, sinceIso);
-
-    const seen = new Set(files.map(f => f.getId()));
-    try {
-      const baseQ = 'mimeType = "application/vnd.google-makersuite.prompt" and trashed = false';
-      const fullQ = sinceIso ? `${baseQ} and modifiedDate > "${sinceIso}"` : baseQ;
-      const q = DriveApp.searchFiles(fullQ);
-      while (q.hasNext()) {
-        const pf = q.next();
-        if (!seen.has(pf.getId())) { seen.add(pf.getId()); files.push(pf); }
-      }
-    } catch (e) {}
-
-    const stateMap = props.getProperties();
-    let mdCount = 0, queuedCount = 0, paused = false;
-
-    // PHASE 1: Fast Markdown sync in Drive (uses 0 GitHub minutes)
-    for (const file of files) {
-      if (Date.now() - startTime > 150000) { paused = true; break; }
-      if (file.isTrashed()) continue;
-      const mime = file.getMimeType();
-      if (mime.startsWith('application/vnd.google-apps.') || mime.startsWith('image/') ||
-          mime.startsWith('video/') || mime.startsWith('audio/') || mime === 'application/pdf') continue;
-      if (file.getSize() > 15 * 1024 * 1024) continue;
-
-      const id = file.getId();
-      const updatedMs = file.getLastUpdated().getTime();
-      const key = CONFIG.STATE_PREFIX + id;
-      let prev = {};
-      if (stateMap[key]) { try { prev = JSON.parse(stateMap[key]); } catch (e) {} }
-
-      if (prev.t === updatedMs && prev.m) continue;
-
-      let data;
-      try { data = JSON.parse(file.getBlob().getDataAsString('UTF-8')); } catch (e) { continue; }
-      if (!data || (!data.chunkedPrompt && !data.contents && !data.runSettings)) continue;
-
-      const chat = extractCleanChat_(data, file);
-      const baseName = cleanName_(file.getName());
-      const mdName = `${baseName}.md`;
-      const fullMdText = renderCleanMd_(chat);

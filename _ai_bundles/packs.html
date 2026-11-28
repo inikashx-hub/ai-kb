@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>AI KB — 1-Tap Packs</title>
+  <style>
+    :root {
+      --bg: #0b1020; --card: #141b2d; --card2: #1b243b; --border: #283454;
+      --text: #eef2ff; --muted: #94a3b8; --accent: #3b82f6; --ok: #10b981; --warn: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--text); padding: 14px 12px 96px;
+    }
+    .wrap { max-width: 780px; margin: 0 auto; }
+    h1 { font-size: 1.25rem; margin: 0 0 4px; }
+    .sub { font-size: 0.84rem; color: var(--muted); margin-bottom: 12px; }
+    .quick { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .chip {
+      border: 1px solid var(--border); background: var(--card); color: var(--text);
+      padding: 6px 10px; border-radius: 999px; font-size: 0.8rem; cursor: pointer;
+    }
+    .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    .chip.ok { background: var(--ok); border-color: var(--ok); color: #052e16; font-weight: 600; }
+    .search {
+      width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+      background: var(--card); color: var(--text); font-size: 0.95rem; margin-bottom: 10px;
+    }
+    .tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 10px; }
+    .section-title {
+      font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em;
+      color: #93c5fd; margin: 16px 2px 8px; font-weight: 700;
+    }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 11px 12px; margin-bottom: 9px;
+    }
+    .card.selected { border-color: var(--accent); background: var(--card2); }
+    .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+    .title { font-size: 0.96rem; font-weight: 600; line-height: 1.3; }
+    .meta { font-size: 0.78rem; color: var(--muted); margin-top: 4px; line-height: 1.35; }
+    .badge {
+      display: inline-block; font-size: 0.72rem; padding: 2px 7px; border-radius: 999px;
+      background: #1e293b; color: #cbd5e1; margin-right: 6px;
+    }
+    .badge.warn { background: #451a03; color: #fcd34d; }
+    .btns { display: flex; gap: 6px; flex-shrink: 0; }
+    button {
+      border: 1px solid var(--border); background: #223052; color: #fff;
+      padding: 7px 11px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+    }
+    button.copy-btn { background: var(--accent); border-color: var(--accent); }
+    button.copy-btn.copied { background: var(--ok); border-color: var(--ok); color: #052e16; }
+    button.sel-btn.on { background: #1d4ed8; border-color: #60a5fa; }
+    details { margin-top: 8px; }
+    summary { font-size: 0.78rem; color: var(--muted); cursor: pointer; }
+    .parts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+    .part-btn { background: #0f172a; font-size: 0.75rem; padding: 4px 8px; border-radius: 6px; }
+    .bar {
+      position: fixed; left: 0; right: 0; bottom: 0; background: #0f172a;
+      border-top: 1px solid var(--border); padding: 10px 12px; display: none;
+      align-items: center; justify-content: space-between; gap: 10px; z-index: 20;
+    }
+    .bar.show { display: flex; }
+    .bar-info { font-size: 0.84rem; }
+    .bar-info.over { color: #fca5a5; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>AI KB — 1-Tap Packs</h1>
+    <div class="sub" id="subInfo"></div>
+    <div class="quick" id="quickBar"></div>
+    <input class="search" id="searchBox" type="search" placeholder="Search subject, chapter, or chat..." />
+    <div class="tabs" id="subjectTabs"></div>
+    <div id="listRoot"></div>
+  </div>
+  <div class="bar" id="mixBar">
+    <div class="bar-info" id="mixInfo"></div>
+    <div class="btns">
+      <button id="mixClearBtn">Clear</button>
+      <button class="copy-btn" id="mixCopyBtn">Copy Mix</button>
+    </div>
+  </div>
+  <script id="kb-data" type="application/json">{"repo": "inikashx-hub/ai-kb", "built": "2026-11-28", "quick": {"llms": "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/llms.txt", "core": "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/hot-core.md", "recent": "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/hot-recent.md"}, "subjects": [{"slug": "books", "label": "Books & Compendiums"}, {"slug": "english", "label": "English"}, {"slug": "study-chats", "label": "Study Chats"}], "packs": [{"name": "ch01-rbi-monetary-policy", "title": "1. RBI & Monetary Policy", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch01-rbi-monetary-policy-p1.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch01-rbi-monetary-policy-p2.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch02-banking-financial-awareness", "title": "2. Banking & Financial Awareness", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch02-banking-financial-awareness-p1.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch02-banking-financial-awareness-p2.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch02-banking-financial-awareness-p3.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch02-banking-financial-awareness-p4.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch02-banking-financial-awareness-p5.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch03-indian-economy-union-budget", "title": "3. Indian Economy & Union Budget", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch03-indian-economy-union-budget-p1.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch04-government-schemes-initiatives", "title": "4. Government Schemes & Initiatives", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-government-schemes-initiatives-p1.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-government-schemes-initiatives-p2.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-government-schemes-initiatives-p3.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch05-appointments-resignations", "title": "5. Appointments & Resignations", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch05-appointments-resignations-p1.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch06-awards-honours", "title": "6. Awards & Honours", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch06-awards-honours-p1.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch07-summits-conferences-events", "title": "7. Summits, Conferences & Events", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch07-summits-conferences-events-p1.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch08-reports-indices-rankings", "title": "8. Reports, Indices & Rankings", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch08-reports-indices-rankings-p1.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch08-reports-indices-rankings-p2.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch09-mous-partnerships-acquisitions", "title": "9. MoUs, Partnerships & Acquisitions", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch09-mous-partnerships-acquisitions-p1.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch10-science-technology-defence", "title": "10. Science, Technology & Defence", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch10-science-technology-defence-p1.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch10-science-technology-defence-p2.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch11-sports-championships", "title": "11. Sports & Championships", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch11-sports-championships-p1.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch12-books-authors-obituaries", "title": "12. Books, Authors & Obituaries", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch12-books-authors-obituaries-p1.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch13-important-days-themes", "title": "13. Important Days & Themes", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch13-important-days-themes-p1.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch14-international-organisations-hq", "title": "14. International Organisations & HQ", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch14-international-organisations-hq-p1.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch15-indian-polity-constitution", "title": "15. Indian Polity & Constitution", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch15-indian-polity-constitution-p1.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch16-geography-national-parks-ramsar", "title": "16. Geography, National Parks & Ramsar", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch16-geography-national-parks-ramsar-p1.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch17-art-culture-heritage", "title": "17. Art, Culture & Heritage", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch17-art-culture-heritage-p1.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "ch18-countries-capitals-general-stati", "title": "18. Countries, Capitals & General Static GK", "subject_slug": "books", "subject_label": "Books & Compendiums", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch18-countries-capitals-general-stati-p1.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch18-countries-capitals-general-stati-p2.md"], "summary": "Banking & Insurance General Awareness Compendium"}, {"name": "english", "title": "English (All Notes/Chats)", "subject_slug": "english", "subject_label": "English", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/english-p1.md"], "summary": "Adjectives"}, {"name": "study-chats", "title": "Study Chats (Compact)", "subject_slug": "study-chats", "subject_label": "Study Chats", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/study-chats-p1.md"], "summary": "Knowledge Base"}, {"name": "chat-optimizing-two-step-llm-routing", "title": "Optimizing Two-Step LLM Routing", "subject_slug": "study-chats", "subject_label": "Study Chats", "urls": ["https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p1.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p2.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p3.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p4.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p5.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p6.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p7.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p8.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p9.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p10.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p11.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p12.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p13.md", "https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p14.md"], "summary": "Optimizing Two-Step LLM Routing"}]}</script>
+  <script>
+    const DATA = JSON.parse(document.getElementById('kb-data').textContent);
+    const PROMPT_LINE = "Read every URL above via URL context and answer my question with exact FILE citations.";
+    const DISCOVERY_LINE = "Read the Knowledge Base Index via URL context and output only the 1 to 8 most relevant Cold Bundle URLs for my question.";
+    let activeSubject = "all";
+    const selected = new Set();
+
+    function copyText(text, btn, labelAfter) {
+      const done = () => {
+        if (!btn) return;
+        const orig = btn.textContent;
+        btn.textContent = labelAfter || "Copied!";
+        btn.classList.add("copied", "ok");
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied", "ok"); }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+      } else {
+        fallbackCopy(text, done);
+      }
+    }
+
+    function fallbackCopy(text, done) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(ta);
+      done();
+    }
+
+    function updateMixBar() {
+      const bar = document.getElementById("mixBar");
+      const info = document.getElementById("mixInfo");
+      if (selected.size === 0) { bar.classList.remove("show"); return; }
+      let totalUrls = 0;
+      DATA.packs.forEach(p => { if (selected.has(p.name)) totalUrls += p.urls.length; });
+      bar.classList.add("show");
+      info.textContent = `Selected: ${selected.size} pack(s) • ${totalUrls} / 20 URLs`;
+      info.classList.toggle("over", totalUrls > 20);
+    }
+
+    function renderQuick() {
+      document.getElementById("subInfo").textContent = `${DATA.repo} • ${DATA.packs.length} pack(s) • Built ${DATA.built}`;
+      const qb = document.getElementById("quickBar");
+      const items = [
+        { label: "Copy llms.txt (2-Turn)", text: DATA.quick.llms + "\n" + DISCOVERY_LINE },
+        { label: "Copy Core + Recent", text: DATA.quick.core + "\n" + DATA.quick.recent + "\n" + PROMPT_LINE },
+        { label: "Copy Core Only", text: DATA.quick.core + "\n" + PROMPT_LINE }
+      ];
+      items.forEach(it => {
+        const b = document.createElement("button");
+        b.className = "chip";
+        b.textContent = it.label;
+        b.onclick = () => copyText(it.text, b, "Copied!");
+        qb.appendChild(b);
+      });
+    }
+
+    function renderTabs() {
+      const tabs = document.getElementById("subjectTabs");
+      tabs.innerHTML = "";
+      const all = [{ slug: "all", label: `All (${DATA.packs.length})` }, ...DATA.subjects];
+      all.forEach(s => {
+        const b = document.createElement("button");
+        b.className = "chip" + (activeSubject === s.slug ? " active" : "");
+        b.textContent = s.label;
+        b.onclick = () => { activeSubject = s.slug; renderTabs(); renderList(); };
+        tabs.appendChild(b);
+      });
+    }
+
+    function renderList() {
+      const q = document.getElementById("searchBox").value.trim().toLowerCase();
+      const root = document.getElementById("listRoot");
+      root.innerHTML = "";
+
+      const filtered = DATA.packs.filter(p => {
+        if (activeSubject !== "all" && p.subject_slug !== activeSubject) return false;
+        if (!q) return true;
+        return (p.title + " " + p.name + " " + p.subject_label + " " + p.summary).toLowerCase().includes(q);
+      });
+
+      const groups = new Map();
+      filtered.forEach(p => {
+        if (!groups.has(p.subject_label)) groups.set(p.subject_label, []);
+        groups.get(p.subject_label).push(p);
+      });
+
+      if (groups.size === 0) {
+        const empty = document.createElement("div");
+        empty.className = "meta";
+        empty.textContent = "No matching packs found.";
+        root.appendChild(empty);
+        return;
+      }
+
+      groups.forEach((packs, subjLabel) => {
+        const h = document.createElement("div");
+        h.className = "section-title";
+        h.textContent = `${subjLabel} (${packs.length})`;
+        root.appendChild(h);
+
+        packs.forEach(p => {
+          const card = document.createElement("div");
+          card.className = "card" + (selected.has(p.name) ? " selected" : "");
+
+          const row = document.createElement("div");
+          row.className = "row";
+
+          const left = document.createElement("div");
+          const title = document.createElement("div");
+          title.className = "title";
+          title.textContent = p.title;
+          left.appendChild(title);
+
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          const badge = document.createElement("span");
+          badge.className = "badge" + (p.urls.length > 20 ? " warn" : "");
+          badge.textContent = `${p.urls.length} URL${p.urls.length > 1 ? "s" : ""}`;
+          meta.appendChild(badge);
+          const sumSpan = document.createElement("span");
+          sumSpan.textContent = p.summary;
+          meta.appendChild(sumSpan);
+          left.appendChild(meta);
+
+          const btns = document.createElement("div");
+          btns.className = "btns";
+
+          const selBtn = document.createElement("button");
+          selBtn.className = "sel-btn" + (selected.has(p.name) ? " on" : "");
+          selBtn.textContent = selected.has(p.name) ? "✓" : "+";
+          selBtn.onclick = () => {
+            if (selected.has(p.name)) selected.delete(p.name); else selected.add(p.name);
+            updateMixBar();
+            renderList();
+          };
+
+          const copyBtn = document.createElement("button");
+          copyBtn.className = "copy-btn";
+          copyBtn.textContent = "Copy";
+          copyBtn.onclick = () => copyText(p.urls.join("\n") + "\n" + PROMPT_LINE, copyBtn, "Copied!");
+
+          btns.appendChild(selBtn);
+          btns.appendChild(copyBtn);
+          row.appendChild(left);
+          row.appendChild(btns);
+          card.appendChild(row);
+
+          if (p.urls.length > 1) {
+            const det = document.createElement("details");
+            const sum = document.createElement("summary");
+            sum.textContent = `Copy individual part (${p.urls.length} parts)`;
+            det.appendChild(sum);
+            const partsDiv = document.createElement("div");
+            partsDiv.className = "parts";
+            p.urls.forEach((u, idx) => {
+              const pb = document.createElement("button");
+              pb.className = "part-btn";
+              pb.textContent = `P${idx + 1}`;
+              pb.onclick = () => copyText(u + "\n" + PROMPT_LINE, pb, "✓");
+              partsDiv.appendChild(pb);
+            });
+            det.appendChild(partsDiv);
+            card.appendChild(det);
+          }
+
+          root.appendChild(card);
+        });
+      });
+    }
+
+    document.getElementById("searchBox").addEventListener("input", renderList);
+    document.getElementById("mixClearBtn").onclick = () => { selected.clear(); updateMixBar(); renderList(); };
+    document.getElementById("mixCopyBtn").onclick = () => {
+      const urls = [];
+      DATA.packs.forEach(p => { if (selected.has(p.name)) urls.push(...p.urls); });
+      copyText([...new Set(urls)].join("\n") + "\n" + PROMPT_LINE, document.getElementById("mixCopyBtn"), "Copied!");
+    };
+
+    renderQuick();
+    renderTabs();
+    renderList();
+  </script>
+</body>
+</html>

@@ -1,96 +1,88 @@
 # Knowledge Base Index (Tier 2 Cold Bundles)
 # Use static pack URLs from packs-list.txt for 1-turn, or llms.txt for 2-turn discovery.
 
-- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part1.92c87201.md
+- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part1.8e69e051.md
   Topic Group: chats-2026-11-part1
-  Files/Parts: Optimizing Two-Step LLM Routing [Part 1/17 — Header / TOC] (2026-11-27) | Optimizing Two-Step LLM Routing [Part 2/17 — 2. Context Pollution & Speed] (2026-11-27) | Optimizing Two-Step LLM Routing [Part 3/17 — 3. Defeat Stale Caching with Commit-Pinned URLs] (2026-11-27)
-  User Questions: Thinking of ways to get RAG like functionality in normal Google AI Studio instead of using API with the help o... | Compare method 1 and 2 | How can we optimise the method 2 for accuracy and user experience?
-  Topics/Chapters: First, Two Crucial Rules for GitHub + URL Context | Method 1: The "Saved Prompt + Sharded Bundles" Setup (Best for < 20 Files / Medium KBs) | Method 2: The `llms.txt` Two-Step "Router" (True Retrieval for Large Repos) | Method 3: GitHub Pages + "Google Search Grounding" + "URL Context" (Zero-Manual-URL Search | Method 4: Need Private Repos? Use AI Studio's Native GitHub Sync (or Upload Bundles) | Watch Out for These Gotchas | At a Glance | The 4 Biggest Trade-Offs | 2. Context Pollution & Speed | 3. Defeat Stale Caching with Commit-Pinned URLs
-  Preview: 3. Defeat Stale Caching with Commit-Pinned URLs Because URL Context checks Google's internal index c ... latest version. *(For `llms.txt` itself in System Instructions, you still point to `main/llms.txt`.)
+  Files/Parts: Optimizing Two-Step LLM Routing [Part 1/14] (2026-11-27)
+  User Questions: Thinking of ways to get RAG like functionality in normal Google AI Studio instead of using API with the help o... | Compare method 1 and 2 | How can we optimise the method 2 for accuracy and user experience? | Can we combine method 1 and method 2 to balance their respective weaknesses in one architecture?
+  Topics/Chapters: First, Two Crucial Rules for GitHub + URL Context | Method 1: The "Saved Prompt + Sharded Bundles" Setup (Best for < 20 Files / Medium KBs) | Method 2: The `llms.txt` Two-Step "Router" (True Retrieval for Large Repos) | Method 3: GitHub Pages + "Google Search Grounding" + "URL Context" (Zero-Manual-URL Search | Method 4: Need Private Repos? Use AI Studio's Native GitHub Sync (or Upload Bundles) | Watch Out for These Gotchas | At a Glance | The 4 Biggest Trade-Offs
 
-- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part2.cc898e61.md
+- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part2.39d1bff0.md
   Topic Group: chats-2026-11-part2
-  Files/Parts: Optimizing Two-Step LLM Routing [Part 4/17 — 4. Enforce Strict Router & Grounding Rules] (2026-11-27)
-  User Questions: Can we combine method 1 and method 2 to balance their respective weaknesses in one architecture? | Give me a step by step guide to set up GitHub essentials for the hybrid | Help me to fill the blanks to create repository | Should I create separate folder for .txt and .md files?
-  Topics/Chapters: 4. Enforce Strict Router & Grounding Rules
+  Files/Parts: Optimizing Two-Step LLM Routing [Part 2/14] (2026-11-27)
+  User Questions: Help me to fill the blanks to create repository | Should I create separate folder for .txt and .md files? | I meant the code that you have given in the previous chats for creating new files in repository | Can I upload python script by creating new file now?
+  Topics/Chapters: Step 5: Connect Your 3 Static URLs to Google AI Studio | Always-Loaded Tier 1 Sources + Tier 2 Index (Read via URL context) | Rules | Screen 1 (General) | Screen 2 (Configuration) | Quick Tip for Adding Folders on Mobile (Next Screen) | Why? | One Quick Tip for `.txt` Files
 
-- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part3.6e705179.md
+- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part3.852b029d.md
   Topic Group: chats-2026-11-part3
-  Files/Parts: Optimizing Two-Step LLM Routing [Part 5/17 — 4. Enforce Strict Router & Grounding Rules] (2026-11-27)
-  User Questions: I already have a private repository in GitHub that gets jobs from Google apps script with 15 minutes trigger t... | Where should I upload a knowledge base before uploading python script? | I have just pasted the python code | I updated them
-  Topics/Chapters: 4. Enforce Strict Router & Grounding Rules
+  Files/Parts: Optimizing Two-Step LLM Routing [Part 3/14] (2026-11-27)
+  User Questions: I updated them | There is no temperature toggle | How does our RAG perform against Claude, Chatgpt and NotebookLM? | Can we make our hybrid better?
+  Topics/Chapters: Fix 2: Update `build-kb.py` (So It Reads `chats/` Directly) | Check That It Worked | Step 1: Set Up Google AI Studio | Always-Loaded Tier 1 Sources + Tier 2 Index (Read via URL context) | Rules | Step 2: Test It Right Now (2-Turn Test) | What to Set Instead (Tap the Tune/Sliders Icon at Top Right): | 1. Why Turn 1 Asked You to Paste the 3 URLs
 
-- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part4.6b899330.md
+- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part4.302fce3e.md
   Topic Group: chats-2026-11-part4
-  Files/Parts: Optimizing Two-Step LLM Routing [Part 6/17 — 4. Enforce Strict Router & Grounding Rules] (2026-11-27)
-  User Questions: There is no temperature toggle | How does our RAG perform against Claude, Chatgpt and NotebookLM? | Can we make our hybrid better? | Upgrade the script
-  Topics/Chapters: 4. Enforce Strict Router & Grounding Rules
+  Files/Parts: Optimizing Two-Step LLM Routing [Part 4/14] (2026-11-27)
+  User Questions: # Untitled prompt
+  Topics/Chapters: Quick Test After Commit | Evidence Scope & Archive Structure | 1. Volume, Year-Wise Consistency & Cross-Chapter Distribution | 2. The Nine Recurring Question-Setting Hooks | 3. Chronological Evolution (2019 -> 2026) & Exam-Tier Split | 4. Practical Takeaways: The Examiner's 8-Field Scheme Checklist | What Your Transcript Just Proved | Patched `build-kb.py` (Zero Truncation + Direct Chapter Routing)
 
-- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part5.062ef9c9.md
+- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part5.6c3f35c0.md
   Topic Group: chats-2026-11-part5
-  Files/Parts: Optimizing Two-Step LLM Routing [Part 7/17 — 4. Enforce Strict Router & Grounding Rules] (2026-11-27)
+  Files/Parts: Optimizing Two-Step LLM Routing [Part 5/14] (2026-11-27)
   User Questions: It read 11 to 18 chapters rather than the scheme chapter | # Knowledge Base Index (Tier 2 Cold Bundles) # Note: Core docs and recent compact chats are pre-loaded in Tier...
-  Topics/Chapters: 4. Enforce Strict Router & Grounding Rules
+  Topics/Chapters: Also Update Rule 2 in Your AI Studio System Instructions | The Fix (3 Tweaks in `build-kb.py`)
 
-- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part6.0096c1f7.md
+- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part6.a82a0389.md
   Topic Group: chats-2026-11-part6
-  Files/Parts: Optimizing Two-Step LLM Routing [Part 8/17 — 4. Enforce Strict Router & Grounding Rules] (2026-11-27)
-  User Questions: # Knowledge Base Index (Tier 2 Cold Bundles) # Note: Core docs and recent compact chats are pre-loaded in Tier...
-  Topics/Chapters: 4. Enforce Strict Router & Grounding Rules
+  Files/Parts: Optimizing Two-Step LLM Routing [Part 6/14] (2026-11-27)
+  User Questions: # Knowledge Base Index (Tier 2 Cold Bundles) # Note: Core docs and recent compact chats are pre-loaded in Tier... | # Untitled prompt
+  Topics/Chapters: After You Commit | The Permanent Fix for `build-kb.py` | Quick Verify After Commit
 
-- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part7.446bf160.md
+- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part7.c5cdce8e.md
   Topic Group: chats-2026-11-part7
-  Files/Parts: Optimizing Two-Step LLM Routing [Part 9/17 — 4. Enforce Strict Router & Grounding Rules] (2026-11-27)
-  User Questions: # Untitled prompt | I need it in one turn | Option 1
-  Topics/Chapters: 4. Enforce Strict Router & Grounding Rules
+  Files/Parts: Optimizing Two-Step LLM Routing [Part 7/14] (2026-11-27)
+  User Questions: I need it in one turn | Option 1 | So, packs are chosen by you. I need flexibility
+  Topics/Chapters: How to Shave Off That Extra First Turn (3 Turns → 2 Turns) | Option 1: Static "Subject Packs" via URL Context *(Best if You Want Pure GitHub + URL Togg | Option 2: Single Master File (`all-kb.md`) via `+` → Google Drive *(Best for 1-Turn Over E | Option 3: GitHub Pages + Search Grounding *(1-Turn, Zero Pasting — With Indexing Lag)* | Which 1-Turn Route Do You Want? | Step 1: Update `build-kb.py` | Step 2: Update System Instructions for 1-Turn Mode | Rules
 
-- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part8.d6a2b914.md
+- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part8.5e150bb1.md
   Topic Group: chats-2026-11-part8
-  Files/Parts: Optimizing Two-Step LLM Routing [Part 10/17 — 4. Enforce Strict Router & Grounding Rules] (2026-11-27)
-  User Questions: So, packs are chosen by you. I need flexibility
-  Topics/Chapters: 4. Enforce Strict Router & Grounding Rules
-
-- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part9.571e66e7.md
-  Topic Group: chats-2026-11-part9
-  Files/Parts: Optimizing Two-Step LLM Routing [Part 11/17 — 4. Enforce Strict Router & Grounding Rules] (2026-11-27)
+  Files/Parts: Optimizing Two-Step LLM Routing [Part 8/14] (2026-11-27)
   User Questions: How to create custom packs.json? | My knowledge base is going to include many files in the future. How can I work about it? | Before automate the pipeline, I just want to know any compute or storage obstacles for the free tier since I m... | Let's resolve compute issue first.
-  Topics/Chapters: 4. Enforce Strict Router & Grounding Rules
+  Topics/Chapters: Step 2: How You Control Packs Yourself (`packs.json` — Optional) | Step 3: Universal System Instructions (Handles Both 1-Turn & 2-Turn) | Rules | Step 1: Check Your Exact Auto-Pack Names First | Step 2: Create `packs.json` at the Repo Root | Step 3: Make `packs.json` Auto-Rebuild on Edit | Step 4: Grab Your Custom Pack URLs | 1. Keep Every Folder / Pack Under ~250 KB (~7 URLs Max)
 
-- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part10.7d93db77.md
+- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part9.91465d38.md
+  Topic Group: chats-2026-11-part9
+  Files/Parts: Optimizing Two-Step LLM Routing [Part 9/14] (2026-11-27)
+  User Questions: Apps script code: /** * Syncs AI Studio chats -> Clean .md in Drive -> Private GitHub Actions -> Incremental P...
+  Topics/Chapters: Ready to Patch Your Private Pipeline? | Fix 1: Cache Dependencies in `build-pdfs.yml` (Private Repo) | Fix 2: Batch + Idle-Debounce + Incremental Scan in Google Apps Script
+
+- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part10.b5ba94c6.md
   Topic Group: chats-2026-11-part10
-  Files/Parts: Optimizing Two-Step LLM Routing [Part 12/17 — 4. Enforce Strict Router & Grounding Rules] (2026-11-27)
+  Files/Parts: Optimizing Two-Step LLM Routing [Part 10/14] (2026-11-27)
   User Questions: Give me the complete updated javascript code; so that, I can paste and delete the old one
-  Topics/Chapters: 4. Enforce Strict Router & Grounding Rules
+  Topics/Chapters: Expected Compute After This Patch
 
-- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part11.0f3facfd.md
+- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part11.2cecacac.md
   Topic Group: chats-2026-11-part11
-  Files/Parts: Optimizing Two-Step LLM Routing [Part 13/17 — 4. Enforce Strict Router & Grounding Rules] (2026-11-27)
+  Files/Parts: Optimizing Two-Step LLM Routing [Part 11/14] (2026-11-27)
   User Questions: Should I update version in apps script? | Updated it | Compare the 3 choices across various parameters | Choice A
-  Topics/Chapters: 4. Enforce Strict Router & Grounding Rules
+  Topics/Chapters: Quick Checklist After Pasting | If You Still Want to Sync the Version (Optional) | 1. Quick Compute Check | 2. Next Up: Storage & Connecting to `ai-kb` (at 50 Chats/Day) | Side-by-Side Comparison | How They Compare on the 5 Things That Matter Most | Practical Recommendation for Your Setup | How You Control What Goes to `ai-kb`
 
-- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part12.4353cb3d.md
+- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part12.c64b808e.md
   Topic Group: chats-2026-11-part12
-  Files/Parts: Optimizing Two-Step LLM Routing [Part 14/17 — 4. Enforce Strict Router & Grounding Rules] (2026-11-27)
-  Topics/Chapters: 4. Enforce Strict Router & Grounding Rules
-  Preview: javascript / Syncs AI Studio chats -> Clean .md in Drive -> Batched Private PDFs + Selective Batched ... ('\n\n'); if (body.trim()) lines.push(`## ${turn.role}`, '', body, '', '---', ''); } return lines; }
-
-- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part13.77e023ba.md
-  Topic Group: chats-2026-11-part13
-  Files/Parts: Optimizing Two-Step LLM Routing [Part 15/17 — 4. Enforce Strict Router & Grounding Rules] (2026-11-27)
+  Files/Parts: Optimizing Two-Step LLM Routing [Part 12/14] (2026-11-27)
   User Questions: I don't know how to edit the token | I renamed it in drive. But, app script still shows 0 processed
-  Topics/Chapters: 4. Enforce Strict Router & Grounding Rules
+  Topics/Chapters: Quick Test to Verify End-to-End | Step 1: Check Your Token Prefix in Apps Script | Step 2: Grant Access to `ai-kb` on GitHub | How to Run Your First `ai-kb` Sync Test | What to Look For in the Execution Log | Quick 2-Step Fix
 
-- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part14.356bbfdf.md
-  Topic Group: chats-2026-11-part14
-  Files/Parts: Optimizing Two-Step LLM Routing [Part 16/17 — 4. Enforce Strict Router & Grounding Rules] (2026-11-27)
+- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part13.74e40cd1.md
+  Topic Group: chats-2026-11-part13
+  Files/Parts: Optimizing Two-Step LLM Routing [Part 13/14] (2026-11-27)
   User Questions: Still no
-  Topics/Chapters: 4. Enforce Strict Router & Grounding Rules
+  Topics/Chapters: Replace Your Code in `Untitled 2.gs` with This Complete Version
 
-- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part15.ea3af786.md
-  Topic Group: chats-2026-11-part15
-  Files/Parts: Optimizing Two-Step LLM Routing [Part 17/17 — 4. Enforce Strict Router & Grounding Rules] (2026-11-27)
-  Topics/Chapters: 4. Enforce Strict Router & Grounding Rules
-  Preview: const lock = LockService.getScriptLock(); lock.waitLock(30000); try { const pdfFolder = getOrCreateF ... de `English[KB]` are your AI Studio JSON/chat files or `.md`/`.txt` files, not PDFs or Google Docs.)
+- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-11-part14.c22b33f0.md
+  Topic Group: chats-2026-11-part14
+  Files/Parts: Optimizing Two-Step LLM Routing [Part 14/14] (2026-11-27)
+  Preview: if (!skipQueue) { const assets = collectAssets_(turnsForPdf); const jobPayload = { sourceId: id, upd ... de `English[KB]` are your AI Studio JSON/chat files or `.md`/`.txt` files, not PDFs or Google Docs.)
 
 - URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-general-part1.f0b75c49.md
   Topic Group: chats-general-part1

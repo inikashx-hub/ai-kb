@@ -1,12 +1,16 @@
-# 1-Turn Dynamic Packs (Auto-generated from folders, chapters, and optional packs.json)
-# Mix and match any URLs below in Turn 1, or define your own combos in packs.json.
+# 1-Turn Dynamic Packs (Grouped by Subject / Book)
+# For mobile 1-Tap Copy, open GitHub Pages index.html (or _ai_bundles/packs.html).
 
-## PACK: ch01-rbi-monetary-policy (2 URLs)
+# ========================================
+# SUBJECT: Books & Compendiums
+# ========================================
+
+## PACK: 1. RBI & Monetary Policy [ch01-rbi-monetary-policy] (2 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch01-rbi-monetary-policy-p1.md
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch01-rbi-monetary-policy-p2.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch02-banking-financial-awareness (5 URLs)
+## PACK: 2. Banking & Financial Awareness [ch02-banking-financial-awareness] (5 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch02-banking-financial-awareness-p1.md
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch02-banking-financial-awareness-p2.md
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch02-banking-financial-awareness-p3.md
@@ -14,104 +18,104 @@ https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch02
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch02-banking-financial-awareness-p5.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch02-context-pollution-speed (1 URLs)
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch02-context-pollution-speed-p1.md
-Read every URL above via URL context and answer my question with exact FILE citations.
-
-## PACK: ch03-defeat-stale-caching-with-commit (1 URLs)
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch03-defeat-stale-caching-with-commit-p1.md
-Read every URL above via URL context and answer my question with exact FILE citations.
-
-## PACK: ch03-indian-economy-union-budget (1 URLs)
+## PACK: 3. Indian Economy & Union Budget [ch03-indian-economy-union-budget] (1 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch03-indian-economy-union-budget-p1.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch04-enforce-strict-router-grounding (14 URLs)
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-enforce-strict-router-grounding-p1.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-enforce-strict-router-grounding-p2.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-enforce-strict-router-grounding-p3.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-enforce-strict-router-grounding-p4.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-enforce-strict-router-grounding-p5.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-enforce-strict-router-grounding-p6.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-enforce-strict-router-grounding-p7.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-enforce-strict-router-grounding-p8.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-enforce-strict-router-grounding-p9.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-enforce-strict-router-grounding-p10.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-enforce-strict-router-grounding-p11.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-enforce-strict-router-grounding-p12.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-enforce-strict-router-grounding-p13.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-enforce-strict-router-grounding-p14.md
-Read every URL above via URL context and answer my question with exact FILE citations.
-
-## PACK: ch04-government-schemes-initiatives (3 URLs)
+## PACK: 4. Government Schemes & Initiatives [ch04-government-schemes-initiatives] (3 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-government-schemes-initiatives-p1.md
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-government-schemes-initiatives-p2.md
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-government-schemes-initiatives-p3.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch05-appointments-resignations (1 URLs)
+## PACK: 5. Appointments & Resignations [ch05-appointments-resignations] (1 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch05-appointments-resignations-p1.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch06-awards-honours (1 URLs)
+## PACK: 6. Awards & Honours [ch06-awards-honours] (1 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch06-awards-honours-p1.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch07-summits-conferences-events (1 URLs)
+## PACK: 7. Summits, Conferences & Events [ch07-summits-conferences-events] (1 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch07-summits-conferences-events-p1.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch08-reports-indices-rankings (2 URLs)
+## PACK: 8. Reports, Indices & Rankings [ch08-reports-indices-rankings] (2 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch08-reports-indices-rankings-p1.md
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch08-reports-indices-rankings-p2.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch09-mous-partnerships-acquisitions (1 URLs)
+## PACK: 9. MoUs, Partnerships & Acquisitions [ch09-mous-partnerships-acquisitions] (1 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch09-mous-partnerships-acquisitions-p1.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch10-science-technology-defence (2 URLs)
+## PACK: 10. Science, Technology & Defence [ch10-science-technology-defence] (2 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch10-science-technology-defence-p1.md
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch10-science-technology-defence-p2.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch11-sports-championships (1 URLs)
+## PACK: 11. Sports & Championships [ch11-sports-championships] (1 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch11-sports-championships-p1.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch12-books-authors-obituaries (1 URLs)
+## PACK: 12. Books, Authors & Obituaries [ch12-books-authors-obituaries] (1 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch12-books-authors-obituaries-p1.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch13-important-days-themes (1 URLs)
+## PACK: 13. Important Days & Themes [ch13-important-days-themes] (1 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch13-important-days-themes-p1.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch14-international-organisations-hq (1 URLs)
+## PACK: 14. International Organisations & HQ [ch14-international-organisations-hq] (1 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch14-international-organisations-hq-p1.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch15-indian-polity-constitution (1 URLs)
+## PACK: 15. Indian Polity & Constitution [ch15-indian-polity-constitution] (1 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch15-indian-polity-constitution-p1.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch16-geography-national-parks-ramsar (1 URLs)
+## PACK: 16. Geography, National Parks & Ramsar [ch16-geography-national-parks-ramsar] (1 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch16-geography-national-parks-ramsar-p1.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch17-art-culture-heritage (1 URLs)
+## PACK: 17. Art, Culture & Heritage [ch17-art-culture-heritage] (1 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch17-art-culture-heritage-p1.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: ch18-countries-capitals-general-stati (2 URLs)
+## PACK: 18. Countries, Capitals & General Static GK [ch18-countries-capitals-general-stati] (2 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch18-countries-capitals-general-stati-p1.md
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch18-countries-capitals-general-stati-p2.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: english (1 URLs)
+# ========================================
+# SUBJECT: English
+# ========================================
+
+## PACK: English (All Notes/Chats) [english] (1 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/english-p1.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
-## PACK: study-chats (1 URLs)
+# ========================================
+# SUBJECT: Study Chats
+# ========================================
+
+## PACK: Study Chats (Compact) [study-chats] (1 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/study-chats-p1.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: Optimizing Two-Step LLM Routing [chat-optimizing-two-step-llm-routing] (14 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p1.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p2.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p3.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p4.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p5.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p6.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p7.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p8.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p9.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p10.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p11.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p12.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p13.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-optimizing-two-step-llm-routing-p14.md
 Read every URL above via URL context and answer my question with exact FILE citations.

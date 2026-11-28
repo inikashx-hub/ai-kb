@@ -1,12 +1,91 @@
-# Cold Knowledge Bundle: chats-2026-11-part9
+# Subject Pack: chat-optimizing-two-step-llm-routing (Part 8/14)
 
 
 ---
-## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 11/17 — 4. Enforce Strict Router & Grounding Rules]
+## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 8/14]
 
-## [Chapter Context: 4. Enforce Strict Router & Grounding Rules]
+def split_compendium_by_chapters(
+    body: str, max_bytes: int, known_chapters: list[tuple[int, str]]
+) -> list[dict]:
+    sections: list[dict] = []
+    cur_lines: list[str] = []
+    cur_num, cur_title, cur_raw_name = 0, "Header / TOC", "header"
+    in_toc, seen_qa, in_fence = False, False, False
 
-recent_candidates.sort(key=lambda x: x, reverse=True) selected_recent, recent_bytes = [], 0 for _, blk, b_size in recent_candidates: if selected_recent and (recent_bytes + b_size > MAX_RECENT_TOTAL_BYTES): break selected_recent.append(blk) recent_bytes += b_size
+    for line in body.splitlines(keepends=True):
+        if line.lstrip().startswith("```"): in_fence = not in_fence
+
+        low = line.lower if not in_fence: if "included topic chapters" in low or "table of contents" in low: in_toc = True if "answer:" in low: if not seen_qa and cur_num == 0 and known_chapters: cur_num = known_chapters cur_raw_name = known_chapters cur_title = f"{cur_num}. {cur_raw_name}" in_toc = False seen_qa = True
+
+            ch_hit = match_known_chapter(line, known_chapters) if ch_hit and (seen_qa or not in_toc): if cur_lines: sections.append( {"num": cur_num, "title": cur_title, "raw_name": cur_raw_name, "text": "".join(cur_lines).strip} ) cur_num, cur_title, cur_raw_name = ch_hit cur_lines = [line] continue
+
+        cur_lines.append(line)
+
+    if cur_lines: sections.append( {"num": cur_num, "title": cur_title, "raw_name": cur_raw_name, "text": "".join(cur_lines).strip} )
+
+    chunks: list[dict] = [] for sec in sections: text = sec["text"] if not text: continue if len(text.encode("utf-8")) <= max_bytes: chunks.append(sec) continue
+
+        buf, buf_bytes, part_idx = [], 0, 1 for para in text.split("\n\n"): p_bytes = len(para.encode("utf-8")) + 2 if buf and (buf_bytes + p_bytes > max_bytes): chunk_body = "\n\n".join(buf).strip if part_idx > 1 and sec["num"] > 0: chunk_body = f"## [Chapter Context: {sec['title']}]\n\n{chunk_body}" chunks.append({"num": sec["num"], "title": sec["title"], "raw_name": sec["raw_name"], "text": chunk_body}) buf, buf_bytes = [], 0 part_idx += 1 buf.append(para) buf_bytes += p_bytes if buf: chunk_body = "\n\n".join(buf).strip if part_idx > 1 and sec["num"] > 0: chunk_body = f"## [Chapter Context: {sec['title']}]\n\n{chunk_body}" chunks.append({"num": sec["num"], "title": sec["title"], "raw_name": sec["raw_name"], "text": chunk_body})
+
+    return chunks
+
+def split_plain_large_body(body: str, max_bytes: int) -> list[str]: if len(body.encode("utf-8")) <= max_bytes: return [body] chunks, buf, buf_bytes = [], [], 0 for para in body.split("\n\n"): p_bytes = len(para.encode("utf-8")) + 2 if buf and (buf_bytes + p_bytes > max_bytes): chunks.append("\n\n".join(buf).strip) buf, buf_bytes = [], 0 buf.append(para) buf_bytes += p_bytes if buf: chunks.append("\n\n".join(buf).strip) return chunks
+
+def make_preview(text: str) -> str: clean_lines = [ strip_md_noise(ln) for ln in text.splitlines if ln.strip and not ln.strip.startswith("## [Chapter Context:") ] joined = " ".join(ln for ln in clean_lines if ln) if len(joined) <= 200: return joined return f"{joined[:100]} ... {joined[-100:]}"
+
+def extract_doc_info( path: Path, text: str, fallback_title: str = "", known_chapters: list[tuple[int, str]] | None = None ) -> dict: h1_match = re.search(r"^#\s+(.+)$", text, re.MULTILINE) title = h1_match.group(1).strip if h1_match else (fallback_title or path.stem)
+
+    updated_date = None upd_match = re.search(r"\*\*Updated:\*\*\s*(\d{4}-\d{2}-\d{2})", text) if upd_match: try: updated_date = datetime.strptime(upd_match.group(1), "%Y-%m-%d").date except ValueError: updated_date = None
+
+    is_chat = bool(re.search(r"^##\s+(User|Model)\s*$", text, re.MULTILINE)) prompts, sections = [], []
+
+    if is_chat: raw_prompts = re.findall( r"^##\s+User\s*\n+(.*?)(?=\n+---|\n+##\s+Model|\Z)", text, re.DOTALL | re.MULTILINE, ) for p in raw_prompts[:4]: compact = " ".join(p.split) if compact: prompts.append(compact[:110] + ("..." if len(compact) > 110 else ""))
+
+        h3s = re.findall(r"^###\s+(.+)$", text, re.MULTILINE) skip = {"conclusion", "summary", "summary checklist before applying:"} sections = [h.strip[:90] for h in h3s if h.strip.lower not in skip][:8] else: seen = set for line in text.splitlines: for ch in find_chapter_markers(line, known_chapters): if ch not in seen: seen.add(ch) sections.append(ch) if len(sections) >= 12: break if len(sections) >= 12: break
+
+    return { "title": title, "updated_date": updated_date, "prompts": prompts, "sections": sections, "preview": make_preview(text) if not is_chat else "", }
+
+def format_file_block(rel_path: Path, body: str, part_label: str = "") -> str: label = f" {part_label}" if part_label else "" return f"\n\n---\n## FILE: `{rel_path.as_posix()}`{label}\n\n{body}\n"
+
+def write_cold_chunks(group_name: str, items: list[dict]) -> list[dict]: chunks, current_blocks, current_meta, current_size = [], [], [], 0 for item in items: block = format_file_block(item["path"], item["body"], item.get("part_label", "")) block_size = len(block.encode("utf-8")) if current_blocks and (current_size + block_size > MAX_PART_BYTES): chunks.append((current_blocks, current_meta)) current_blocks, current_meta, current_size = [], [], 0 current_blocks.append(block) current_meta.append(item) current_size += block_size if current_blocks: chunks.append((current_blocks, current_meta))
+
+    written = [] for idx, (blocks, metas) in enumerate(chunks, start=1): suffix = f"-part{idx}" if len(chunks) > 1 else "" content = f"# Cold Knowledge Bundle: {group_name}{suffix}\n" + "".join(blocks) short_hash = hashlib.md5(content.encode("utf-8")).hexdigest[:8] filename = f"cold-{group_name}{suffix}.{short_hash}.md" (COLD_DIR / filename).write_text(content, encoding="utf-8")
+
+        titles, prompts, sections, previews = [], [], [], [] for m in metas: d = m["updated_date"].isoformat if m["updated_date"] else "" lbl = f"{m['title']} {m.get('part_label', '')}".strip full_t = f"{lbl} ({d})" if d else lbl if full_t not in titles: titles.append(full_t) prompts.extend(m["prompts"]) sections.extend(m["sections"]) if m["preview"]: previews.append(m["preview"])
+
+        written.append( { "url": f"{RAW_BASE}/_ai_bundles/cold/{filename}", "group": f"{group_name}{suffix}", "titles": titles, "prompts": list(dict.fromkeys(prompts))[:10], "sections": list(dict.fromkeys(sections))[:12], "preview": previews if previews else "", } ) return written
+
+def write_static_packs(pack_items: dict[str, list[dict]]) -> dict[str, list[str]]: pack_urls: dict[str, list[str]] = {} for pack_name, items in sorted(pack_items.items): chunks, current_blocks, current_size = [], [], 0 for item in items: block = format_file_block(item["path"], item["body"], item.get("part_label", "")) block_size = len(block.encode("utf-8")) if current_blocks and (current_size + block_size > MAX_PART_BYTES): chunks.append(current_blocks) current_blocks, current_size = [], 0 current_blocks.append(block) current_size += block_size if current_blocks: chunks.append(current_blocks)
+
+        urls = [] total = len(chunks) for idx, blocks in enumerate(chunks, start=1): filename = f"{pack_name}-p{idx}.md" content = f"# Subject Pack: {pack_name} (Part {idx}/{total})\n" + "".join(blocks) (PACKS_DIR / filename).write_text(content, encoding="utf-8") urls.append(f"{RAW_BASE}/_ai_bundles/packs/{filename}") pack_urls[pack_name] = urls return pack_urls
+
+def main: scan_dirs = [d for d in (Path("core"), Path("chats"), Path("kb")) if d.exists] if not scan_dirs: raise SystemExit("Missing 'chats/' or 'core/' directory.")
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True) shutil.rmtree(COLD_DIR, ignore_errors=True) shutil.rmtree(PACKS_DIR, ignore_errors=True) COLD_DIR.mkdir(parents=True, exist_ok=True) PACKS_DIR.mkdir(parents=True, exist_ok=True)
+
+    git_recent = get_git_recent_files(RECENT_DAYS) hot_core_blocks = [] hot_core_items = [] recent_candidates = [] cold_groups: dict[str, list[dict]] = {} auto_packs: dict[str, list[dict]] = {}
+
+    for root_dir in scan_dirs: for path in sorted(root_dir.rglob("*")): if not path.is_file or path.suffix.lower not in ALLOWED_EXTS: continue
+
+            raw_text = path.read_text(encoding="utf-8", errors="ignore") meta, body = parse_frontmatter(raw_text) body = clean_chat_wrapper(body) known_chapters = extract_toc_chapters(body) top_info = extract_doc_info(path, body, known_chapters=known_chapters) parts = path.parts
+
+            is_hot = ( root_dir.name == "core" or (root_dir.name == "kb" and len(parts) > 2 and parts == "core") or meta.get("tier") == "hot" )
+
+            if is_hot: hot_core_blocks.append(format_file_block(path, body)) hot_core_items.append({"path": path, "body": body, "part_label": ""}) continue
+
+            body_bytes = len(body.encode("utf-8")) if top_info["updated_date"] is not None: is_recent = (TODAY - top_info["updated_date"]).days <= RECENT_DAYS sort_d = top_info["updated_date"] else: is_recent = path in git_recent sort_d = TODAY if is_recent else date.min
+
+            if is_recent and body_bytes <= MAX_RECENT_FILE_BYTES: blk = format_file_block(path, body) recent_candidates.append((sort_d, blk, len(blk.encode("utf-8"))))
+
+            if root_dir.name == "chats": if len(parts) > 2: group_key = sanitize_slug(parts) elif top_info["updated_date"] is not None: group_key = f"chats-{top_info['updated_date'].strftime('%Y-%m')}" else: group_key = "chats-general" else: raw_sub = parts if len(parts) > 2 else "general" group_key = sanitize_slug(raw_sub)
+
+            if known_chapters and body_bytes > MAX_PART_BYTES: ch_chunks = split_compendium_by_chapters(body, MAX_PART_BYTES - 1500, known_chapters) total_parts = len(ch_chunks) for idx, ch in enumerate(ch_chunks, start=1): part_label = f"[Part {idx}/{total_parts} — {ch['title']}]" part_info = extract_doc_info( path, ch["text"], fallback_title=top_info["title"], known_chapters=known_chapters ) item = { "path": path, "body": ch["text"], "part_label": part_label, "title": top_info["title"], "updated_date": top_info["updated_date"], "prompts": part_info["prompts"], "sections": [ch["title"]] if ch["num"] > 0 else part_info["sections"], "preview": part_info["preview"], } cold_groups.setdefault(group_key, []).append(item) if ch["num"] > 0: ch_pack = make_chapter_slug(ch["num"], ch["raw_name"]) auto_packs.setdefault(ch_pack, []).append(item) else: if root_dir.name == "chats" and len(parts) > 2: pack_name = sanitize_slug(parts) elif root_dir.name == "kb" and len(parts) > 2: pack_name = sanitize_slug(parts) else: pack_name = "study-chats"
+
+                body_parts = split_plain_large_body(body, MAX_PART_BYTES - 1500) total_parts = len(body_parts) for idx, part_body in enumerate(body_parts, start=1): part_label = f"[Part {idx}/{total_parts}]" if total_parts > 1 else "" part_info = extract_doc_info(path, part_body, fallback_title=top_info["title"]) item = { "path": path, "body": part_body, "part_label": part_label, "title": top_info["title"], "updated_date": top_info["updated_date"], "prompts": part_info["prompts"], "sections": part_info["sections"], "preview": part_info["preview"], } cold_groups.setdefault(group_key, []).append(item) auto_packs.setdefault(pack_name, []).append(item)
+
+    core_text = ( "# Tier 1: Core Knowledge\n" + "".join(hot_core_blocks) if hot_core_blocks else "# Tier 1: Core Knowledge\nNo core files configured yet." ) (OUT_DIR / "hot-core.md").write_text(core_text, encoding="utf-8")
+
+    recent_candidates.sort(key=lambda x: x, reverse=True) selected_recent, recent_bytes = [], 0 for _, blk, b_size in recent_candidates: if selected_recent and (recent_bytes + b_size > MAX_RECENT_TOTAL_BYTES): break selected_recent.append(blk) recent_bytes += b_size
 
     recent_text = ( f"# Tier 1: Recent Compact Chats (Last {RECENT_DAYS} Days)\n" + "".join(selected_recent) if selected_recent else f"# Tier 1: Recent Changes\nNo compact chats updated in the last {RECENT_DAYS} days." ) (OUT_DIR / "hot-recent.md").write_text(recent_text, encoding="utf-8")
 
@@ -340,101 +419,3 @@ Breaking each topic (like *Percentages*) into **short 10k–30k token mini-sessi
 ### How to Cut Your Private Repo Compute by ~85–90%
 
 Right now, your biggest compute leak is **spinning up a full GitHub Action VM + PDF engine for individual/active chats every 15 minutes**. Here is the exact architecture fix:
-
-#### 1. Separate Fast `.md` Conversion from Heavy `.pdf` Rendering
-* **`.md` conversion (`JSON → .md`)** is pure text parsing—converting 25 AI Studio JSONs in one Python batch takes **< 2 seconds** (or can even run directly inside Google Apps Script using `JSON.parse()` for **0 GitHub minutes**!).
-* **`.pdf` conversion** (especially if you render math/LaTeX formulas) is the heavy step that pushes jobs past the 60-second line (`1 min → 2 min` billing).
-* **The Fix:** You don't need a rebuilt `.pdf` every 15 minutes while you are actively studying. Run **`.pdf` rendering in 1–2 batches per day** (or only every 4–6 hours on **finished/idle** chats), while `.md` can update much more often at virtually zero cost.
-
-#### 2. Add a 20–30 Minute "Idle Debounce" + Batch Queue
-* Let Apps Script run on its 15-minute check using **`modifiedDate > lastSyncTime`** (takes ~1–2 seconds, protecting your 90 min/day Apps Script quota).
-* **Debounce rule:** Do **not** queue an active JSON while you are still studying in it! Only queue a JSON once its Drive `lastUpdated` timestamp is **at least 20–30 minutes old** (idle/finished).
-* **Batch dispatch:** Trigger your private GitHub Action **once every 4 hours** (max 6 runs/day, and **skip completely** if nothing changed). Inside that single VM boot, loop through **all queued JSONs in one pass** (starting your PDF engine *once* instead of 50 times).
-* **New Compute Math:** `4–6 batch runs/day × 1–2 min × 30 days` = **~120–360 min/month** (comfortably inside your **2,000 min/month** free quota, even at 50 chats/day!).
-
-#### 3. Cache Your PDF Tools (`actions/cache`)
-If your private workflow installs `pandoc`/`texlive`, `weasyprint`, or `playwright`/Chromium on every run, that wastes 45–90 seconds per job before converting a single file. Adding `actions/cache` (or a pre-built container) drops setup down to ~5–10 seconds.
-
----
-
-### Ready to Patch Your Private Pipeline?
-Paste your **private repo’s `.github/workflows/*.yml`** and your **Google Apps Script code** here (**make sure to delete/mask any GitHub tokens or Drive folder IDs first!**).
-
-I’ll inspect how it currently triggers and converts, and give you the exact **batch + idle-debounce + cache** update to slash your GitHub Actions minutes first—before we connect the `.md` output into `ai-kb`.
-
----
-
-## User
-
-Apps script code: /**
- * Syncs AI Studio chats -> Clean .md in Drive -> Private GitHub Actions -> Incremental PDFs via doPost
- * Reads GITHUB_TOKEN and CALLBACK_SECRET safely from Project Settings -> Script Properties.
- */ const CONFIG = { SOURCE_FOLDER_NAMES: ['Google AI Studio', 'AI Studio'], MD_FOLDER_NAME: 'AI Studio Markdown', PDF_FOLDER_NAME: 'AI Studio PDF',
-
-  GITHUB_OWNER: 'inikashx-hub', GITHUB_REPO: 'AI-Studio-pdf-worker', GITHUB_BRANCH: 'main',
-
-  INCLUDE_THOUGHTS: false, INCLUDE_METADATA: true, STATE_PREFIX: 'gh_sync_', MAX_SINGLE_PDF_BYTES: 15 * 1024 * 1024 };
-
-function getSecrets_ { const props = PropertiesService.getScriptProperties; const token = (props.getProperty('GITHUB_TOKEN') || '').trim; const secret = (props.getProperty('CALLBACK_SECRET') || '').trim; if (!token || !secret) { throw new Error('Missing GITHUB_TOKEN or CALLBACK_SECRET in Project Settings -> Script Properties.'); } return { token, secret }; }
-
-function hashTurns_(turns) { const raw = JSON.stringify(turns); const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, raw, Utilities.Charset.UTF_8); return digest.map(b => ('0' + ((b & 0xff).toString(16))).slice(-2)).join(''); }
-
-function syncCleanMarkdown { const cache = CacheService.getScriptCache; if (cache.get('gh_sync_running')) return; cache.put('gh_sync_running', '1', 300);
-
-  const startTime = Date.now;
-
-  try { const { token } = getSecrets_; const mdFolder = getOrCreateFolder_(CONFIG.MD_FOLDER_NAME); const pdfFolder = getOrCreateFolder_(CONFIG.PDF_FOLDER_NAME); const visited = new Set([mdFolder.getId, pdfFolder.getId]);
-
-    const files = []; for (const f of getSourceFolders_) collectFiles_(f, visited, files);
-
-    const seen = new Set(files.map(f => f.getId)); try { const q = DriveApp.searchFiles('mimeType = "application/vnd.google-makersuite.prompt" and trashed = false'); while (q.hasNext) { const pf = q.next; if (!seen.has(pf.getId)) { seen.add(pf.getId); files.push(pf); } } } catch (e) {}
-
-    const props = PropertiesService.getScriptProperties; const stateMap = props.getProperties; let mdCount = 0, queuedCount = 0, paused = false;
-
-    for (const file of files) { if (Date.now - startTime > 220000) { paused = true; break; } if (file.isTrashed) continue; const mime = file.getMimeType; if (mime.startsWith('application/vnd.google-apps.') || mime.startsWith('image/') || mime.startsWith('video/') || mime.startsWith('audio/') || mime === 'application/pdf') continue;
-
-      const id = file.getId; const updatedMs = file.getLastUpdated.getTime; const key = CONFIG.STATE_PREFIX + id; let prev = {}; if (stateMap[key]) { try { prev = JSON.parse(stateMap[key]); } catch (e) {} }
-
-      const needsMd = prev.t !== updatedMs || !prev.m; const jobInFlight = prev.qa && (Date.now - prev.qa < 15 * 60 * 1000); const needsPdf = (prev.pt !== updatedMs || !prev.p) && !jobInFlight;
-
-      if (!needsMd && !needsPdf) continue; if (file.getSize > 15 * 1024 * 1024) continue;
-
-      let data; try { data = JSON.parse(file.getBlob.getDataAsString('UTF-8')); } catch (e) { continue; } if (!data || (!data.chunkedPrompt && !data.contents && !data.runSettings)) continue;
-
-      const chat = extractCleanChat_(data, file); const baseName = cleanName_(file.getName); const mdName = `${baseName}.md`; const fullMdText = renderCleanMd_(chat);
-
-      let mdId = prev.m || null; if (needsMd) { if (!mdId) { const byName = mdFolder.getFilesByName(mdName); while (byName.hasNext) { const ef = byName.next; if (!ef.isTrashed) { mdId = ef.getId; break; } } } let updated = false; if (mdId) { try { const ex = DriveApp.getFileById(mdId); if (!ex.isTrashed) { ex.setContent(fullMdText); if (ex.getName !== mdName) ex.setName(mdName); updated = true; } } catch (e) {} } if (!updated) mdId = mdFolder.createFile(Utilities.newBlob(fullMdText, 'text/markdown', mdName)).getId; prev.t = updatedMs; prev.m = mdId; mdCount++; }
-
-      if (needsPdf) { const fullTc = chat.turns.length; const fullTh = hashTurns_(chat.turns); let mode = 'full'; let part = 1; let partStartTc = 0; let expectedTc = 0; let existingPdfId = null; let pdfName = `${baseName}.pdf`; let turnsForPdf = chat.turns; let jobMdText = fullMdText; let skipQueue = false;
-
-        if (prev.p && typeof prev.tc === 'number' && prev.tc > 0 && prev.tc <= fullTc && prev.th) { const prefixHash = hashTurns_(chat.turns.slice(0, prev.tc)); if (prefixHash === prev.th) { try { const existingPdf = DriveApp.getFileById(prev.p); if (!existingPdf.isTrashed) { const curPart = prev.part || 1; const curPdfName = curPart > 1 ? `${baseName} (Part ${curPart}).pdf` : `${baseName}.pdf`;
-
-                if (fullTc === prev.tc) { if (existingPdf.getName !== curPdfName) existingPdf.setName(curPdfName); prev.pt = updatedMs; skipQueue = true; } else if (existingPdf.getSize < CONFIG.MAX_SINGLE_PDF_BYTES) { mode = 'append'; part = curPart; partStartTc = prev.partStartTc || 0; expectedTc = prev.tc; existingPdfId = prev.p; pdfName = curPdfName; turnsForPdf = chat.turns.slice(prev.tc); jobMdText = renderContinuationMd_(chat, turnsForPdf, prev.tc, fullTc, null); } else { mode = 'new_part'; part = curPart + 1; partStartTc = prev.tc; expectedTc = prev.tc; existingPdfId = null; pdfName = `${baseName} (Part ${part}).pdf`; turnsForPdf = chat.turns.slice(prev.tc); jobMdText = renderContinuationMd_(chat, turnsForPdf, prev.tc, fullTc, part); } } } catch (e) {} } }
-
-        if (!skipQueue) { const assets = collectAssets_(turnsForPdf); const jobPayload = { sourceId: id, updatedMs, baseName, pdfName, mode, existingPdfId, expectedTc, nextTc: fullTc, nextTh: fullTh, part, partStartTc, mdText: jobMdText, assets }; if (pushJobToGitHub_(`jobs/${id}.json`, jobPayload, token)) { prev.qt = updatedMs; prev.qa = Date.now; queuedCount++; } } }
-
-      const pLock = LockService.getScriptLock; pLock.waitLock(10000); try { let latest = {}; const latestRaw = props.getProperty(key); if (latestRaw) { try { latest = JSON.parse(latestRaw); } catch (e) {} } props.setProperty(key, JSON.stringify(Object.assign({}, latest, prev))); } finally { pLock.releaseLock; } }
-
-    if (queuedCount > 0) { triggerGitHubWorkflow_(token); }
-
-    console.log(paused ? `Paused at time guard. MD: ${mdCount}, Queued for PDF: ${queuedCount}. Run again to queue remaining.` : `Done! MD updated: ${mdCount}, Queued for GitHub PDF build: ${queuedCount}`); } finally { cache.remove('gh_sync_running'); } }
-
-function collectAssets_(turns) { const assets = []; for (const turn of turns) { for (const item of turn.items) { if (item.type === 'image_b64' && item.data && item.data.length < 7000000) { assets.push({ mimeType: item.mimeType || 'image/png', dataB64: item.data }); } else if (item.type === 'image_drive') { try { const blob = DriveApp.getFileById(item.fileId).getBlob; const bytes = blob.getBytes; if (bytes.length < 5 * 1024 * 1024) { assets.push({ mimeType: blob.getContentType || 'image/png', dataB64: Utilities.base64Encode(bytes) }); } } catch (e) {} } } } return assets; }
-
-function requeueAllPastChats { const props = PropertiesService.getScriptProperties; const all = props.getProperties; let resetCount = 0;
-
-  for (const key of Object.keys(all)) { if (!key.startsWith(CONFIG.STATE_PREFIX)) continue; try { const st = JSON.parse(all[key]); delete st.t; delete st.pt; delete st.qt; delete st.qa; delete st.tc; delete st.th; delete st.part; delete st.partStartTc; props.setProperty(key, JSON.stringify(st)); resetCount++; } catch (e) {} } console.log(`Reset ${resetCount} chat(s). Running syncCleanMarkdown() now...`); syncCleanMarkdown; }
-
-function doPost(e) { try { const { secret } = getSecrets_; const payload = JSON.parse(e.postData.contents); if (!payload || payload.secret !== secret) { return jsonResponse_({ ok: false, error: 'Unauthorized' }); }
-
-    if (payload.action === 'get_pdf') { const existing = DriveApp.getFileById(payload.fileId); if (existing.isTrashed) { return jsonResponse_({ ok: false, error: 'Existing PDF is trashed' }); } const bytes = existing.getBlob.getBytes; return jsonResponse_({ ok: true, pdfB64: Utilities.base64Encode(bytes) }); }
-
-    const lock = LockService.getScriptLock; lock.waitLock(30000); try { const pdfFolder = getOrCreateFolder_(CONFIG.PDF_FOLDER_NAME); const props = PropertiesService.getScriptProperties; const key = CONFIG.STATE_PREFIX + payload.sourceId;
-
-      let prev = {}; const raw = props.getProperty(key); if (raw) { try { prev = JSON.parse(raw); } catch (err) {} }
-
-      if (payload.mode === 'append' && typeof payload.expectedTc === 'number' && typeof prev.tc === 'number' && prev.tc !== payload.expectedTc) { return jsonResponse_({ ok: false, error: 'Stale delta: expectedTc mismatch' }); }
-
-      if (prev.p && payload.mode !== 'new_part') { try { const old = DriveApp.getFileById(prev.p); if (!old.isTrashed) old.setTrashed(true); } catch (err) {} } const dupes = pdfFolder.getFilesByName(payload.pdfName); while (dupes.hasNext) { const df = dupes.next; if (!df.isTrashed) df.setTrashed(true); }
-
-      const bytes = Utilities.base64Decode(payload.pdfB64); const blob = Utilities.newBlob(bytes, 'application/pdf', payload.pdfName); const created = pdfFolder.createFile(blob);

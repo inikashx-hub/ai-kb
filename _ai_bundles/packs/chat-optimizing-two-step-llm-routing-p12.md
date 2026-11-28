@@ -1,10 +1,114 @@
-# Subject Pack: ch04-enforce-strict-router-grounding (Part 13/14)
+# Subject Pack: chat-optimizing-two-step-llm-routing (Part 12/14)
 
 
 ---
-## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 16/17 — 4. Enforce Strict Router & Grounding Rules]
+## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 12/14]
 
-## [Chapter Context: 4. Enforce Strict Router & Grounding Rules]
+const lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      const pdfFolder = getOrCreateFolder_(CONFIG.PDF_FOLDER_NAME);
+      const props = PropertiesService.getScriptProperties();
+      const key = CONFIG.STATE_PREFIX + payload.sourceId;
+
+      let prev = {};
+      const raw = props.getProperty(key);
+      if (raw) { try { prev = JSON.parse(raw); } catch (err) {} }
+
+      if (payload.mode === 'append' && typeof payload.expectedTc === 'number' &&
+          typeof prev.tc === 'number' && prev.tc !== payload.expectedTc) {
+        return jsonResponse_({ ok: false, error: 'Stale delta: expectedTc mismatch' });
+      }
+
+      if (prev.p && payload.mode !== 'new_part') {
+        try {
+          const old = DriveApp.getFileById(prev.p);
+          if (!old.isTrashed()) old.setTrashed(true);
+        } catch (err) {}
+      }
+      const dupes = pdfFolder.getFilesByName(payload.pdfName);
+      while (dupes.hasNext()) {
+        const df = dupes.next();
+        if (!df.isTrashed()) df.setTrashed(true);
+      }
+
+      const bytes = Utilities.base64Decode(payload.pdfB64);
+      const blob = Utilities.newBlob(bytes, 'application/pdf', payload.pdfName);
+      const created = pdfFolder.createFile(blob);
+
+      prev.p = created.getId();
+      prev.pt = payload.updatedMs;
+      if (typeof payload.nextTc === 'number') prev.tc = payload.nextTc;
+      if (payload.nextTh) prev.th = payload.nextTh;
+      prev.part = payload.part || 1;
+      prev.partStartTc = payload.partStartTc || 0;
+      delete prev.qa;
+      props.setProperty(key, JSON.stringify(prev));
+
+      return jsonResponse_({ ok: true, pdfId: created.getId() });
+    } finally {
+      lock.releaseLock();
+    }
+  } catch (err) {
+    return jsonResponse_({ ok: false, error: err.message });
+  }
+}
+
+function jsonResponse_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function pushJobToGitHub_(path, obj, token) {
+  const url = `https://api.github.com/repos/${CONFIG.GITHUB_OWNER}/${CONFIG.GITHUB_REPO}/contents/${path}`;
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
+
+  let sha = null;
+  const getResp = UrlFetchApp.fetch(url, { method: 'get', headers, muteHttpExceptions: true });
+  if (getResp.getResponseCode() === 200) {
+    try { sha = JSON.parse(getResp.getContentText()).sha; } catch (e) {}
+  }
+
+  const body = {
+    message: `Queue ${path}`,
+    content: Utilities.base64Encode(JSON.stringify(obj), Utilities.Charset.UTF_8),
+    branch: CONFIG.GITHUB_BRANCH
+  };
+  if (sha) body.sha = sha;
+
+  const putResp = UrlFetchApp.fetch(url, {
+    method: 'put', contentType: 'application/json', headers,
+    payload: JSON.stringify(body), muteHttpExceptions: true
+  });
+  const code = putResp.getResponseCode();
+  if (code !== 200 && code !== 201) {
+    console.error(`GitHub PUT failed (${code}): ${putResp.getContentText()}`);
+    return false;
+  }
+  return true;
+}
+
+function triggerGitHubWorkflow_(token) {
+  const url = `https://api.github.com/repos/${CONFIG.GITHUB_OWNER}/${CONFIG.GITHUB_REPO}/actions/workflows/build-pdfs.yml/dispatches`;
+  const resp = UrlFetchApp.fetch(url, {
+    method: 'post', contentType: 'application/json',
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+    payload: JSON.stringify({ ref: CONFIG.GITHUB_BRANCH }), muteHttpExceptions: true
+  });
+  const code = resp.getResponseCode();
+  if (code !== 204 && code !== 200) {
+    console.error(`GitHub workflow trigger failed (${code}): ${resp.getContentText()}`);
+  }
+}
+
+/* ===== Text Cleaning & Extraction ===== */
+
+function joinStreamText_(a, b) {
+  if (!a) return b || '';
+  if (!b) return a;
+  if (/\s$/.test(a) || /^\s/.test(b)) return a + b;
+  if (/^[,.;:!?)}\]'"*]/.test(b) || /[(\[{\"'*-]$/.test(a)) return a + b;
+  return a + ' ' + b;
+}
 
 function cleanTextArtifacts_(raw) {
   let text = String(raw || '').replace(/\r\n/g, '\n').replace(/\f/g, '\n');
@@ -204,14 +308,10 @@ function renderContinuationMd_(chat, turns, startIdx, endIdx, partNum) {
 
 function getSourceFolders_() {
   const out = [];
-  const targets = [...CONFIG.SOURCE_FOLDER_NAMES, CONFIG.KB_FOLDER_NAME];
-  for (const n of targets) {
+  for (const n of CONFIG.SOURCE_FOLDER_NAMES) {
     const it = DriveApp.getFoldersByName(n);
     while (it.hasNext()) { const f = it.next(); if (!f.isTrashed()) out.push(f); }
   }
-  // Also catch Drive folders containing "/KB" in their name
-  const q = DriveApp.searchFolders(`title contains "/${CONFIG.KB_FOLDER_NAME}" and trashed = false`);
-  while (q.hasNext()) { const f = q.next(); if (!f.isTrashed()) out.push(f); }
   return out;
 }
 
@@ -241,32 +341,114 @@ function cleanName_(raw) {
 }
 ```
 
-Save and run **`flushKbSyncNow`** once more—check the **`Scanned:`**, **`KB tracked:`**, and **`ai-kb synced:`** numbers in the Execution log!
+---
+
+### Quick Test to Verify End-to-End
+1. Make sure your `GITHUB_TOKEN` (or a new `AI_KB_TOKEN` in Script Properties) has **Contents: Read & write** on `inikashx-hub/ai-kb`.
+2. Add **`[kb]`** to the name of one chat JSON in Drive (or move one chat into `Google AI Studio/KB/Maths/`).
+3. In Apps Script, select **`flushKbSyncNow`** and tap **Run**.
+4. Within ~20 seconds, you’ll see that file land cleanly in `inikashx-hub/ai-kb`, trigger `build-kb.yml`, and automatically generate its 1-turn Subject Pack in `_ai_bundles/packs-list.txt` and Cold Bundle in `_ai_bundles/llms.txt`!
 
 ---
 
 ## User
 
-Still no
+I don't know how to edit the token
 
 ---
 
 ## Model
 
-Aha—I see **`English[KB]`** right there in your Drive screenshot!
+First, check which kind of token you already have—you might not even need to edit it!
 
-That actually makes a great workflow (putting `[KB]` on a **folder** name instead of renaming every file inside it), **and** it explains why `KB tracked: 0` happened: our script was only checking `[kb]` on **filenames**, not on **folder names** like `English[KB]`.
-
-I updated the script so **`[kb]` / `[core]` works on BOTH folder names (like `English[KB]`, `Maths[KB]`, `Formulas[core]`) AND file names**, plus it even handles plain `.md`/`.txt` files if you drop any into a `[KB]` folder.
+### Step 1: Check Your Token Prefix in Apps Script
+1. In Google Apps Script, tap **Project Settings (⚙️ gear icon)** on the left.
+2. Scroll down to **Script Properties** and look at `GITHUB_TOKEN`:
+   * If it starts with **`ghp_`** *(Classic token)* → **You don’t need to change anything!** It already works on both repos.
+   * If it starts with **`github_pat_`** *(Fine-grained token)* → Follow Step 2 below.
 
 ---
 
-### Replace Your Code in `Untitled 2.gs` with This Complete Version
+### Step 2: Grant Access to `ai-kb` on GitHub
+Open **`https://github.com/settings/personal-access-tokens`** in your phone browser *(or tap your **Profile picture → Settings → scroll down to Developer settings → Personal access tokens → Fine-grained tokens**)*.
+
+From there, pick whichever is easier:
+
+#### Easiest Way: Edit Your Existing Token *(No Apps Script Changes Needed)*
+1. Tap the **name** of your existing token.
+2. Scroll to **Repository access** → choose **Only select repositories**.
+3. Make sure **BOTH `AI-Studio-pdf-worker` AND `ai-kb`** are checked! *(Double-check that `AI-Studio-pdf-worker` stays selected so your PDF builder doesn't lose access.)*
+4. Under **Repository permissions**, confirm **Contents** is set to **Read and write** (keep **Actions** / **Workflows** as-is for your PDF worker).
+5. Tap **Save** / **Update permissions** at the bottom. Done—your token string stays the same!
+
+#### Alternative Way: Add a Separate `AI_KB_TOKEN` *(Zero Risk to PDF Worker)*
+1. On the **Fine-grained tokens** page, tap **Generate new token**.
+2. **Token name:** `ai-kb-sync` (pick any **Expiration** you prefer).
+3. **Repository access:** **Only select repositories** → select **`ai-kb`**.
+4. **Repository permissions → Contents:** **Read and write**.
+5. Tap **Generate token** and copy the `github_pat_...` string.
+6. Back in Apps Script → **Project Settings (⚙️) → Script Properties → Add script property**:
+   * **Property:** `AI_KB_TOKEN`
+   * **Value:** *(paste your new token)*
+   * Tap **Save script properties**.
+
+Once done, tag one chat in Drive with `[kb]` (or run **`flushKbSyncNow`** in Apps Script) to test the sync!
+
+---
+
+## Model
+
+Your script pasted cleanly and ran with **zero errors**!
+
+`MD: 0, PDF batch queued: 0, ai-kb synced: 0` just means your existing Drive files were already synced to Markdown, and **none of the source chats are marked for `ai-kb` yet**.
+
+---
+
+### How to Run Your First `ai-kb` Sync Test
+1. **Go to your source AI Studio folder in Google Drive** (`Google AI Studio` or `AI Studio` — *not* `AI Studio Markdown`).
+2. Pick one study chat (for example, inside `Maths/`) and either:
+   * **Rename it** to include **`[kb]`** (e.g., `Percentages [kb]`), **OR**
+   * Move it into a subfolder named **`KB`** inside `Google AI Studio` (e.g., `Google AI Studio/KB/Maths/`).
+   *(Remember: `[core]` sends it to `core/` for Tier 1 instead.)*
+3. Come back to Apps Script and tap **Run** on **`flushKbSyncNow`**.
+
+---
+
+### What to Look For in the Execution Log
+* **Success:** You'll see `ai-kb synced: 1` (and the chat will appear inside `inikashx-hub/ai-kb/chats/...` within seconds).
+* **If it logs a `403` or `404` error:** That just means the token needs `Contents: Read & write` access to `ai-kb`—share the exact log message if that happens and we'll sort it right away!
+
+---
+
+## User
+
+I renamed it in drive. But, app script still shows 0 processed
+
+---
+
+## Model
+
+Look at your Drive screenshot—that explains it immediately!
+
+Look at **`Google AI Studio/KB/English` (Modified 8:02 pm)** in `My Drive`:
+1. Unlike GitHub, **Google Drive does not create nested folders when you type `/`**—so it created one flat folder at the root of `My Drive` literally named `"Google AI Studio/KB/English"`.
+2. Because that folder sits at `My Drive` root (outside `Google AI Studio`) and its literal name isn't `"KB"`, Apps Script skipped it. *(Also remember: always put `[kb]` or `KB/` on your **source AI Studio chat files**, not the `.md` copies inside `AI Studio Markdown`.)*
+
+---
+
+### Quick 2-Step Fix
+
+#### 1. (Optional Tidy-Up in Drive)
+You can either keep that folder as-is (the updated script below now handles `/` in Drive folder names too!), **or** organize cleanly as:
+* `My Drive` → create folder **`KB`** → create **`English`**, **`Maths`**, etc. inside **`KB`** → move source chats in.
+* **Or** leave chats inside `General Awareness` / `Google AI Studio` and just add **`[kb]`** to the chat filename.
+
+#### 2. Update Apps Script (Now Scans `My Drive/KB`, Handles `/`, & Logs Counts)
+Paste this updated complete code (adds `KB` root scanning, strips `My Drive` from paths, handles slash-named folders like `Google AI Studio/KB/English`, and prints `Scanned` + `KB tracked` counts in the log):
 
 ```javascript
 /**
  * Syncs AI Studio chats -> Clean .md in Drive -> Batched Private PDFs + Selective Batched Public KB Sync (Choice A)
- * Supports [kb] / [core] on BOTH folder names (e.g. "English[KB]") and file names, OR a folder named "KB".
  * Reads GITHUB_TOKEN, CALLBACK_SECRET, and optional AI_KB_TOKEN from Project Settings -> Script Properties.
  */
 const CONFIG = {
@@ -392,47 +574,39 @@ function syncCleanMarkdown_(forcePdfFlush, forceKbFlush) {
       if (!needsMd && !needsKbPathSync) continue;
 
       if (needsMd) {
-        let data = null;
-        try { data = JSON.parse(file.getBlob().getDataAsString('UTF-8')); } catch (e) {}
+        let data;
+        try { data = JSON.parse(file.getBlob().getDataAsString('UTF-8')); } catch (e) { continue; }
+        if (!data || (!data.chunkedPrompt && !data.contents && !data.runSettings)) continue;
 
-        if (data && (data.chunkedPrompt || data.contents || data.runSettings)) {
-          const chat = extractCleanChat_(data, file);
-          const baseName = cleanName_(file.getName());
-          const mdName = `${baseName}.md`;
-          const fullMdText = renderCleanMd_(chat);
+        const chat = extractCleanChat_(data, file);
+        const baseName = cleanName_(file.getName());
+        const mdName = `${baseName}.md`;
+        const fullMdText = renderCleanMd_(chat);
 
-          let mdId = prev.m || null;
-          if (!mdId) {
-            const byName = mdFolder.getFilesByName(mdName);
-            while (byName.hasNext()) {
-              const ef = byName.next();
-              if (!ef.isTrashed()) { mdId = ef.getId(); break; }
-            }
+        let mdId = prev.m || null;
+        if (!mdId) {
+          const byName = mdFolder.getFilesByName(mdName);
+          while (byName.hasNext()) {
+            const ef = byName.next();
+            if (!ef.isTrashed()) { mdId = ef.getId(); break; }
           }
-          let updated = false;
-          if (mdId) {
-            try {
-              const ex = DriveApp.getFileById(mdId);
-              if (!ex.isTrashed()) {
-                ex.setContent(fullMdText);
-                if (ex.getName() !== mdName) ex.setName(mdName);
-                updated = true;
-              }
-            } catch (e) {}
-          }
-          if (!updated) mdId = mdFolder.createFile(Utilities.newBlob(fullMdText, 'text/markdown', mdName)).getId();
-
-          prev.t = updatedMs;
-          prev.m = mdId;
-          mdCount++;
-        } else if (targetKbPath && /\.(md|txt)$/i.test(file.getName())) {
-          // Also allow direct .md / .txt files placed inside [KB] / KB folders
-          prev.t = updatedMs;
-          prev.m = id;
-          prev.isPlainText = true;
-        } else {
-          continue;
         }
+        let updated = false;
+        if (mdId) {
+          try {
+            const ex = DriveApp.getFileById(mdId);
+            if (!ex.isTrashed()) {
+              ex.setContent(fullMdText);
+              if (ex.getName() !== mdName) ex.setName(mdName);
+              updated = true;
+            }
+          } catch (e) {}
+        }
+        if (!updated) mdId = mdFolder.createFile(Utilities.newBlob(fullMdText, 'text/markdown', mdName)).getId();
+
+        prev.t = updatedMs;
+        prev.m = mdId;
+        mdCount++;
       }
 
       if (targetKbPath) prev.kbTarget = targetKbPath;
@@ -457,7 +631,7 @@ function syncCleanMarkdown_(forcePdfFlush, forceKbFlush) {
 
         let prev = {};
         try { prev = JSON.parse(stateMap[key]); } catch (e) { continue; }
-        if (!prev.t || prev.isPlainText) continue;
+        if (!prev.t) continue;
 
         const jobInFlight = prev.qa && (Date.now() - prev.qa < 20 * 60 * 1000);
         const needsPdf = (prev.pt !== prev.t || !prev.p) && !jobInFlight;
@@ -619,209 +793,3 @@ function syncCleanMarkdown_(forcePdfFlush, forceKbFlush) {
     cache.remove('gh_sync_running');
   }
 }
-
-function saveStateKey_(props, stateMap, key, prev) {
-  const pLock = LockService.getScriptLock();
-  pLock.waitLock(10000);
-  try {
-    let latest = {};
-    const latestRaw = props.getProperty(key);
-    if (latestRaw) { try { latest = JSON.parse(latestRaw); } catch (e) {} }
-    const merged = Object.assign({}, latest, prev);
-    if (!prev.kbP) delete merged.kbP;
-    if (!prev.kbT) delete merged.kbT;
-    if (!prev.kbTarget) delete merged.kbTarget;
-    const serialized = JSON.stringify(merged);
-    props.setProperty(key, serialized);
-    stateMap[key] = serialized;
-  } finally {
-    pLock.releaseLock();
-  }
-}
-
-function sanitizePathSlug_(name) {
-  return String(name || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'general';
-}
-
-function resolveKbTarget_(file, baseName, rootId) {
-  const rawName = file.getName();
-  let isCoreTag = CONFIG.KB_CORE_TAG_REGEX.test(rawName);
-  let isKbTag = CONFIG.KB_TAG_REGEX.test(rawName);
-
-  const chain = [];
-  let cur = file;
-  for (let depth = 0; depth < 6; depth++) {
-    const parents = cur.getParents();
-    if (!parents.hasNext()) break;
-    const parent = parents.next();
-    if (rootId && parent.getId() === rootId) break;
-    const pName = parent.getName();
-    if (CONFIG.SOURCE_FOLDER_NAMES.some(n => n.toLowerCase() === pName.toLowerCase())) break;
-    const segs = pName.split('/').map(s => s.trim()).filter(Boolean);
-    for (let i = segs.length - 1; i >= 0; i--) {
-      if (!CONFIG.SOURCE_FOLDER_NAMES.some(n => n.toLowerCase() === segs[i].toLowerCase())) {
-        if (CONFIG.KB_CORE_TAG_REGEX.test(segs[i])) isCoreTag = true;
-        if (CONFIG.KB_TAG_REGEX.test(segs[i])) isKbTag = true;
-        chain.unshift(segs[i]);
-      }
-    }
-    cur = parent;
-  }
-
-  const kbIdx = chain.findIndex(n => n.toLowerCase() === CONFIG.KB_FOLDER_NAME.toLowerCase());
-  const inKbFolder = kbIdx !== -1;
-  if (!isCoreTag && !isKbTag && !inKbFolder) return null;
-
-  const relFolders = inKbFolder ? chain.slice(kbIdx + 1) : chain;
-  const cleanFile = baseName
-    .replace(/\s*\[(kb|core)\]\s*/gi, ' ')
-    .replace(/[#?%\\/:*|"<>]/g, '_')
-    .replace(/\s+/g, ' ')
-    .trim() || 'Untitled';
-
-  const cleanFolders = relFolders
-    .map(f => sanitizePathSlug_(f.replace(/\s*\[(kb|core)\]\s*/gi, ' ')))
-    .filter(Boolean);
-
-  if (isCoreTag || (cleanFolders.length > 0 && cleanFolders[0] === 'core')) {
-    return `core/${cleanFile}.md`;
-  }
-  if (cleanFolders.length > 0) {
-    return `chats/${cleanFolders.join('/')}/${cleanFile}.md`;
-  }
-  return `chats/${cleanFile}.md`;
-}
-
-function pushBatchToGitHubRepo_(owner, repo, branch, ops, commitMessage, token) {
-  const baseApi = `https://api.github.com/repos/${owner}/${repo}`;
-  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
-
-  const refResp = UrlFetchApp.fetch(`${baseApi}/git/ref/heads/${branch}`, { method: 'get', headers, muteHttpExceptions: true });
-  if (refResp.getResponseCode() !== 200) {
-    console.error(`KB ref fetch failed (${refResp.getResponseCode()}): ${refResp.getContentText()}`);
-    return false;
-  }
-  const headSha = JSON.parse(refResp.getContentText()).object.sha;
-
-  const commitResp = UrlFetchApp.fetch(`${baseApi}/git/commits/${headSha}`, { method: 'get', headers, muteHttpExceptions: true });
-  if (commitResp.getResponseCode() !== 200) {
-    console.error(`KB commit fetch failed (${commitResp.getResponseCode()}): ${commitResp.getContentText()}`);
-    return false;
-  }
-  const baseTreeSha = JSON.parse(commitResp.getContentText()).tree.sha;
-
-  const treeEntries = [];
-  for (const op of ops) {
-    if (op.content === null) {
-      const chk = UrlFetchApp.fetch(`${baseApi}/contents/${encodeURI(op.path)}?ref=${branch}`, {
-        method: 'get', headers, muteHttpExceptions: true
-      });
-      if (chk.getResponseCode() === 200) {
-        treeEntries.push({ path: op.path, mode: '100644', type: 'blob', sha: null });
-      }
-      continue;
-    }
-    const blobResp = UrlFetchApp.fetch(`${baseApi}/git/blobs`, {
-      method: 'post', contentType: 'application/json', headers,
-      payload: JSON.stringify({ content: op.content, encoding: 'utf-8' }), muteHttpExceptions: true
-    });
-    if (blobResp.getResponseCode() !== 201) {
-      console.error(`KB blob failed (${blobResp.getResponseCode()}): ${blobResp.getContentText()}`);
-      return false;
-    }
-    const blobSha = JSON.parse(blobResp.getContentText()).sha;
-    treeEntries.push({ path: op.path, mode: '100644', type: 'blob', sha: blobSha });
-  }
-
-  if (treeEntries.length === 0) return true;
-
-  const treeResp = UrlFetchApp.fetch(`${baseApi}/git/trees`, {
-    method: 'post', contentType: 'application/json', headers,
-    payload: JSON.stringify({ base_tree: baseTreeSha, tree: treeEntries }), muteHttpExceptions: true
-  });
-  if (treeResp.getResponseCode() !== 201) {
-    console.error(`KB tree failed (${treeResp.getResponseCode()}): ${treeResp.getContentText()}`);
-    return false;
-  }
-  const newTreeSha = JSON.parse(treeResp.getContentText()).sha;
-
-  const newCommitResp = UrlFetchApp.fetch(`${baseApi}/git/commits`, {
-    method: 'post', contentType: 'application/json', headers,
-    payload: JSON.stringify({ message: commitMessage, tree: newTreeSha, parents: [headSha] }), muteHttpExceptions: true
-  });
-  if (newCommitResp.getResponseCode() !== 201) {
-    console.error(`KB commit create failed (${newCommitResp.getResponseCode()}): ${newCommitResp.getContentText()}`);
-    return false;
-  }
-  const newCommitSha = JSON.parse(newCommitResp.getContentText()).sha;
-
-  const patchResp = UrlFetchApp.fetch(`${baseApi}/git/refs/heads/${branch}`, {
-    method: 'patch', contentType: 'application/json', headers,
-    payload: JSON.stringify({ sha: newCommitSha }), muteHttpExceptions: true
-  });
-  if (patchResp.getResponseCode() !== 200) {
-    console.error(`KB ref update failed (${patchResp.getResponseCode()}): ${patchResp.getContentText()}`);
-    return false;
-  }
-  return true;
-}
-
-function collectAssets_(turns) {
-  const assets = [];
-  for (const turn of turns) {
-    for (const item of turn.items) {
-      if (item.type === 'image_b64' && item.data && item.data.length < 7000000) {
-        assets.push({ mimeType: item.mimeType || 'image/png', dataB64: item.data });
-      } else if (item.type === 'image_drive') {
-        try {
-          const blob = DriveApp.getFileById(item.fileId).getBlob();
-          const bytes = blob.getBytes();
-          if (bytes.length < 5 * 1024 * 1024) {
-            assets.push({ mimeType: blob.getContentType() || 'image/png', dataB64: Utilities.base64Encode(bytes) });
-          }
-        } catch (e) {}
-      }
-    }
-  }
-  return assets;
-}
-
-function requeueAllPastChats() {
-  const props = PropertiesService.getScriptProperties();
-  props.deleteProperty(CONFIG.SCAN_STATE_KEY);
-  props.deleteProperty(CONFIG.DISPATCH_STATE_KEY);
-  props.deleteProperty(CONFIG.KB_DISPATCH_STATE_KEY);
-  const all = props.getProperties();
-  let resetCount = 0;
-
-  for (const key of Object.keys(all)) {
-    if (!key.startsWith(CONFIG.STATE_PREFIX)) continue;
-    try {
-      const st = JSON.parse(all[key]);
-      delete st.t; delete st.pt; delete st.qt; delete st.qa;
-      delete st.tc; delete st.th; delete st.part; delete st.partStartTc;
-      delete st.kbT; delete st.kbP; delete st.kbTarget; delete st.isPlainText;
-      props.setProperty(key, JSON.stringify(st));
-      resetCount++;
-    } catch (e) {}
-  }
-  console.log(`Reset ${resetCount} chat(s). Running full sync...`);
-  syncCleanMarkdown_(true, true);
-}
-
-function doPost(e) {
-  try {
-    const { secret } = getSecrets_();
-    const payload = JSON.parse(e.postData.contents);
-    if (!payload || payload.secret !== secret) {
-      return jsonResponse_({ ok: false, error: 'Unauthorized' });
-    }
-
-    if (payload.action === 'get_pdf') {
-      const existing = DriveApp.getFileById(payload.fileId);
-      if (existing.isTrashed()) {
-        return jsonResponse_({ ok: false, error: 'Existing PDF is trashed' });
-      }
-      const bytes = existing.getBlob().getBytes();
-      return jsonResponse_({ ok: true, pdfB64: Utilities.base64Encode(bytes) });
-    }

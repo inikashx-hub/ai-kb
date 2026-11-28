@@ -1,8 +1,170 @@
-# Subject Pack: ch04-enforce-strict-router-grounding (Part 1/14)
+# Subject Pack: chat-optimizing-two-step-llm-routing (Part 1/14)
 
 
 ---
-## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 4/17 — 4. Enforce Strict Router & Grounding Rules]
+## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 1/14]
+
+# Optimizing Two-Step LLM Routing
+
+> **Model:** gemini-4-hydrogen | **Updated:** 2026-11-27 15:12 UTC
+
+---
+
+## User
+
+Thinking of ways to get RAG like functionality in normal Google AI Studio instead of using API with the help of URL toggle and GitHub
+
+---
+
+## Model
+
+You can get surprisingly close to a real RAG pipeline right inside the **Google AI Studio Playground** (no API keys, vector DBs, or custom servers) by treating **GitHub as your dynamic document store** and **URL context** as your retriever.
+
+However, simply pasting `https://github.com/user/repo` won't work like RAG—URL Context **does not crawl nested links or folders**. It only reads the exact URLs you give it (meaning a standard GitHub repo link only gives Gemini the landing page HTML and `README.md`).
+
+To make it behave like actual RAG, here are the best ways to architect **GitHub + URL Context** in normal Google AI Studio, ranked from simplest to most scalable.
+
+---
+
+### First, Two Crucial Rules for GitHub + URL Context
+1. **Always use `raw.githubusercontent.com` (or GitHub Gist `/raw`), NOT `github.com/user/repo/blob/...`:**
+   Standard GitHub URLs return heavy HTML UI wrappers, navigation menus, and truncated previews. Raw URLs return pure Markdown, JSON, CSV, XML, or code—saving massive amounts of tokens and avoiding parsing errors.
+2. **Public repos only:**
+   URL Context can only fetch **publicly accessible URLs**. Do **not** put private/sensitive data in a public repo just to use this trick. (For private codebases, check **Method 4** below.)
+
+---
+
+### Method 1: The "Saved Prompt + Sharded Bundles" Setup (Best for < 20 Files / Medium KBs)
+URL Context allows up to **20 URLs per request** (up to **34 MB per URL**, though bounded by the model's context window). Instead of linking 200 tiny notes, bundle them into **5–15 logical files** in a public GitHub repo.
+
+1. **Organize your repo into topic files** (e.g., `docs/architecture.md`, `docs/api-spec.md`, `notes/decisions.md`).
+2. **Automate bundling (optional but huge time-saver):** Add a simple **GitHub Action** using a tool like **Repomix** (`repomix --split-output 1mb`) or a small Python script that merges folders into clean `.md` or `.xml` bundles on every `git push`.
+3. **Save a Template in Google AI Studio:**
+   * Turn **ON** the **URL context** toggle in the right-hand Tools sidebar.
+   * In **System Instructions**, paste your list of `https://raw.githubusercontent.com/<user>/<repo>/main/bundle-1.md` URLs along with a rule like:
+     > *"Use your URL context / browse tool to read the raw GitHub files listed below before answering. Only answer using facts found in those URLs, and cite the exact filename/URL for every claim."*
+   * **Save the prompt** in AI Studio. Whenever you open it, you have a live, synced chat over your GitHub repo—just edit and push to GitHub to update the "knowledge base."
+
+---
+
+### Method 2: The `llms.txt` Two-Step "Router" (True Retrieval for Large Repos)
+If your repo has **hundreds of files** (way too big to stuff all at once into 20 URLs or a single turn's token budget), mimic a two-step RAG retriever using an index file—similar to how `llms.txt` works for developer docs.
+
+1. Create a lightweight **`llms.txt`** (or `manifest.json`) in your repo root containing **1–2 line descriptions + exact raw URLs** for every doc/chunk:
+   ```markdown
+   # Knowledge Base Index
+   - [Auth & OAuth Flows](https://raw.githubusercontent.com/you/kb/main/auth.md): JWT setup, refresh tokens, middleware.
+   - [Billing Webhook Spec](https://raw.githubusercontent.com/you/kb/main/billing.md): Stripe events, retry logic, DB schema.
+   ```
+   *(You can auto-generate this index via a GitHub Action whenever files change.)*
+2. Put **only** the `llms.txt` URL in your **System Instructions**, and instruct Gemini:
+   > *"On the first turn of a question, read `llms.txt`. Identify the 2–4 raw URLs most relevant to the user's question and list them explicitly. Do not guess answers before reading the target files."*
+3. **Two-turn retrieval:**
+   * **Turn 1:** You ask your question -> Gemini reads `llms.txt` and identifies the exact 3 URLs needed.
+   * **Turn 2:** Paste those 3 URLs (or tell it to fetch them if you copy-paste them in) -> Gemini reads only the relevant chunks and answers with zero context bloat.
+
+---
+
+### Method 3: GitHub Pages + "Google Search Grounding" + "URL Context" (Zero-Manual-URL Search)
+Notice that Google AI Studio lets you toggle **both** **Grounding with Google Search** and **URL context** at the same time. Google explicitly recommends this pairing: *"Search for breadth, URL Context for depth."*
+
+If you publish your GitHub repo via **GitHub Pages** (`https://<username>.github.io/<repo>/`, e.g., with MkDocs or plain Markdown/HTML) and it gets indexed by Google:
+1. Enable **both** `Grounding with Google Search` and `URL context` in AI Studio.
+2. Put this in **System Instructions**:
+   > *"Before answering, always search `site:username.github.io/your-repo` using Google Search, then use the URL context / browse tool to read the full content of the top matching pages."*
+
+**Why this feels like real RAG:** Google Search acts as your free semantic/keyword retriever across unlimited pages, and URL Context reads the top matching pages in full before generating the answer. **Catch:** Newly pushed GitHub Pages edits aren't searchable until Google crawls/re-indexes them, so this works better for stable documentation than rapid minute-by-minute edits.
+
+---
+
+### Method 4: Need Private Repos? Use AI Studio's Native GitHub Sync (or Upload Bundles)
+If your repo **cannot be public**:
+* **AI Studio Build Tab (Two-Way GitHub Sync):** In Google AI Studio's **Build** section, you can click `+` -> **Import from GitHub** to link a repository (and even sync changes back and forth) directly inside an AI Studio workspace without exposing raw public URLs.
+* **Playground Drag-and-Drop:** Run `npx repomix` locally (with `--split-output 1mb` if huge) to flatten your private repo into 1–3 clean text/XML files and drop them straight into a Playground chat. You lose the "auto-update via URL" benefit, but it keeps private code off the public internet.
+
+---
+
+### Watch Out for These Gotchas
+* **Stale Cache Behavior:** URL Context uses a two-stage fetch—it checks Google's internal web index cache first, and only falls back to a live fetch if not cached. GitHub's `raw.githubusercontent.com` CDN also caches files for ~5 minutes. If you just pushed a fix and Gemini insists on old info, try appending a dummy query string like `?v=2` (or linking a specific commit SHA URL instead of `/main/`) to force a fresh fetch.
+* **Toggle Resetting:** In Google AI Studio Playground, double-check that **URL context** is actually toggled ON in the right sidebar when starting a new chat or duplicating prompts, as it defaults to OFF on fresh sessions.
+* **Verify Retrieval:** Turn on **Show Thoughts** (if available on your selected model) or ask Gemini to quote exact headings—if a URL silently fails to fetch (e.g., repo is private or URL has a typo), you want the model instructed to tell you *"URL fetch failed"* rather than hallucinating from memory.
+
+---
+
+## User
+
+Compare method 1 and 2
+
+---
+
+## Model
+
+Here is a side-by-side breakdown of **Method 1 (Sharded Bundles)** vs. **Method 2 (`llms.txt` Two-Step Router)** so you can pick the right architecture for your knowledge base.
+
+### At a Glance
+
+| Feature | Method 1: Sharded Bundles | Method 2: `llms.txt` Two-Step Router |
+| :--- | :--- | :--- |
+| **How it works** | Loads all bundled files upfront via System Instructions. | Loads only a tiny index (`llms.txt`) first, then fetches specific files in Turn 2. |
+| **User Experience** | **1-Turn (Instant):** Ask a question, get the answer immediately. | **2-Turn (Manual step):** Ask question → Gemini picks URLs → You paste/confirm them → Answer. |
+| **Max Knowledge Base Size** | **Medium:** Hard-capped at **20 URLs** and Gemini’s context window (~1M tokens total). | **Massive:** Virtually unlimited files in GitHub; only 2–5 relevant files enter context per question. |
+| **Latency & Token Usage** | **Slower / Heavy:** Re-processes massive documents even for tiny questions. | **Fast / Lightweight:** Context stays small and focused on just what’s needed. |
+| **Accuracy / Failure Mode** | **High Recall:** Never misses a file, but huge contexts can dilute attention on subtle details. | **Routing Risk:** If your `llms.txt` summaries are vague, Gemini might pick the wrong file. |
+| **Maintenance Effort** | Low–Medium (best with a GitHub Action that auto-merges files on push). | Medium (requires keeping `llms.txt` descriptions accurate as you add files). |
+
+---
+
+### The 4 Biggest Trade-Offs
+
+#### 1. Friction vs. Scalability (The Core Trade-off)
+* **Method 1 feels like magic** once set up: you open your saved AI Studio prompt, type a question, and get an answer in one shot. However, it hits a brick wall if your repo grows past **20 files** (or ~500k–800k tokens across bundles, leaving room for chat history).
+* **Method 2 scales indefinitely**—your repo can have 500 separate Markdown files, PDFs, or code modules—but because Google AI Studio's URL Context tool doesn't recursively auto-crawl links found *inside* `llms.txt` in a single turn, **you** act as the middleman copying the 2–4 URLs Gemini asks for into Turn 2.
+
+#### 2. Context Pollution & Speed
+* **Method 1** dumps *everything* into the prompt. Even if you only ask about a single API error code, Gemini still has to read 400k tokens of unrelated HR docs, UI specs, and old meeting notes. That makes responses noticeably slower and can occasionally cause "needle-in-a-haystack" misses across multi-turn chats.
+* **Method 2** keeps
+
+---
+
+## User
+
+How can we optimise the method 2 for accuracy and user experience?
+
+---
+
+## Model
+
+Method 2 (`llms.txt` Two-Step Router) usually breaks down in two places:
+1. **Accuracy:** Gemini picks the wrong files from `llms.txt`, forgets a related dependency file, or guesses the answer in Turn 1 without waiting to read the actual docs.
+2. **UX:** Having to highlight and copy-paste multiple `raw.githubusercontent.com` links into Turn 2 gets tedious fast.
+
+You can solve both inside the normal Google AI Studio UI using the optimizations below.
+
+---
+
+### Part 1: Optimizing Accuracy (Better Retrieval, Zero Hallucinations)
+
+#### 1. Turn `llms.txt` into a "Semantic Index" (Not Just Filenames)
+If `llms.txt` only has file names and vague 5-word summaries, the router will miss files whenever your question uses different terminology. Structure each entry like a mini search-index record:
+```markdown
+- URL: https://raw.githubusercontent.com/user/repo/a1b2c3d/docs/auth.md
+  Topic: Authentication, OAuth2, JWT & Session Middleware
+  Keywords/Symbols: verifyToken(), RefreshTokenError, RedisStore, HTTP 401/403
+  Answers: Login flows, token expiration, role-based access control (RBAC)
+  Related/Dependencies: docs/db-schema.md, config/security-env.md
+```
+* **Automate it:** Add a GitHub Action (`on: push`) with a short Python/Node script that parses every Markdown/code file’s `#` headings, exported symbols/functions, and tags to rebuild `llms.txt` automatically on every commit.
+
+#### 2. Use "Hybrid Chunking" Instead of 500 Micro-Files
+If your repo has 400 tiny files (e.g., 1–2 KB each), two bad things happen: `llms.txt` becomes huge and noisy, and retrieving only 3 tiny files often misses surrounding context.
+* **The Fix:** Have your GitHub Action bundle micro-files by feature/module into **30–60 medium-sized files** (e.g., ~20–100 KB each) and index *those* in `llms.txt`.
+* Now `llms.txt` stays super compact, and every URL Gemini fetches in Turn 2 brings complete, self-contained context.
+
+#### 3. Defeat Stale Caching with Commit-Pinned URLs
+Because URL Context checks Google's internal index cache before doing a live fetch (and GitHub's raw CDN caches `/main/` links for ~5 minutes), editing a file doesn't always show up immediately if the URL string stays identical.
+* **The Fix:** Have your GitHub Action write **commit-SHA URLs** inside `llms.txt`:
+  `https://raw.githubusercontent.com/<user>/<repo>/<COMMIT_SHA>/bundle-auth.md`
+* Every time a file changes, its URL in `llms.txt` changes. Google sees a brand-new URL, skips any stale index cache, and live-fetches your exact latest version. *(For `llms.txt` itself in System Instructions, you still point to `main/llms.txt`.)*
 
 #### 4. Enforce Strict Router & Grounding Rules
 * **Lower Temperature:** In AI Studio’s right sidebar, set **Temperature to `0.0`–`0.1`** so file selection and factual extraction stay deterministic.
@@ -442,203 +604,5 @@ jobs:
 2. Commit and push at least one file inside `kb/` (along with `build_kb.py` and `build-kb.yml`).
 3. Open the **Actions** tab and confirm **Build AI Knowledge Bundles** turns green.
 4. Check your repo root—you will now see `_ai_bundles/` containing `llms.txt`, `hot-core.md`, `hot-recent.md`, and `cold/cold-*.<hash>.md`.
-
----
-
-### Step 5: Connect Your 3 Static URLs to Google AI Studio
-1. Open Google AI Studio Playground, toggle **URL context** **ON**, and set **Temperature** to **`0.1`**.
-2. Paste these **3 static URLs** (replace `<USER>` and `<REPO>`) into **System Instructions**:
-
-```markdown
-You are a retrieval-grounded assistant for my knowledge base.
-
-### Always-Loaded Tier 1 Sources + Tier 2 Index (Read via URL context)
-- Tier 1 Core: https://raw.githubusercontent.com/<USER>/<REPO>/main/_ai_bundles/hot-core.md
-- Tier 1 Recent: https://raw.githubusercontent.com/<USER>/<REPO>/main/_ai_bundles/hot-recent.md
-- Tier 2 Index: https://raw.githubusercontent.com/<USER>/<REPO>/main/_ai_bundles/llms.txt
-
-### Rules
-1. First check Tier 1 Core and Tier 1 Recent. If they fully answer the user's question, answer immediately in this turn and cite the exact `FILE:` path.
-2. If the question requires files listed in `llms.txt` that are NOT in Tier 1:
-   - Do NOT guess or answer from `llms.txt` summaries alone.
-   - Pick the 1 to 4 most relevant Cold Bundle URLs from `llms.txt`.
-   - Output a 1-line note explaining why, followed by a SINGLE `text` code block containing ONLY the raw `https://...` URLs (one per line) and this final line inside the block:
-     `Read every URL above via URL context and answer my previous question with exact FILE citations.`
-3. Once provided in the next turn, read the Cold Bundles completely before answering.
-```
-
-3. **Save the prompt** in Google AI Studio. From now on, just push edits to `kb/` on GitHub—your AI Studio chat stays permanently synced. *(Note: After a push, `raw.githubusercontent.com` can take ~1–5 minutes to refresh `llms.txt` and Tier 1 links on `/main/`, though once `llms.txt` updates, the hashed Tier 2 Cold URLs load fresh immediately.)*
-
----
-
-## User
-
-Help me to fill the blanks to create repository
-
----
-
-## Model
-
-Here is exactly how to fill out each field on those two screens:
-
-### Screen 1 (General)
-* **Owner:** Leave as `inikashx-hub`
-* **Repository name:** Type `ai-kb` *(short, lowercase, no spaces—you can also use `my-ai-kb` or any name you like)*
-* **Description:** *(Optional)* `Knowledge base for Google AI Studio RAG`
-
-### Screen 2 (Configuration)
-* **Choose visibility:** Keep it on **Public** *(required so Google AI Studio’s URL Context can read it)*
-* **Add README:** Toggle **ON** *(important on mobile—this automatically creates your `main` branch right away so you can start adding files immediately)*
-* **Add .gitignore:** Leave as **No .gitignore**
-* **Add license:** Leave as **No license**
-
-Tap the green **Create repository** button.
-
----
-
-### Quick Tip for Adding Folders on Mobile (Next Screen)
-GitHub doesn't have a separate "New Folder" button in the browser. Once your repo opens:
-1. Tap **Add file** → **Create new file**.
-2. In the **Name your file...** box, typing a `/` automatically creates folders:
-   * Type `kb/core/overview.md` → paste a sample note → tap **Commit changes...**
-   * Repeat to create `scripts/build_kb.py` → paste the Python script → commit.
-   * Repeat to create `.github/workflows/build-kb.yml` → paste the workflow YAML → commit.
-
-*(Note: If you name your repo `ai-kb`, your 3 Google AI Studio System Instruction URLs will be under `inikashx-hub/ai-kb`!)*
-
----
-
-## User
-
-Should I create separate folder for .txt and .md files?
-
----
-
-## Model
-
-**No—do not separate folders by file type.** Group your folders by **topic or subject** instead (and mix `.md` and `.txt` freely inside them).
-
-### Why?
-Our `build_kb.py` script already supports both `.md` and `.txt` (plus `.json`, `.csv`, `.py`, etc.) automatically, and it creates **Tier 2 Cold Bundles based on your folder names**:
-* If you make `kb/txt/` and `kb/md/`, your bundles get split awkwardly by file extension (`cold-txt.md` vs. `cold-md.md`), scattering related info across different files.
-* If you make topic folders like `kb/core/`, `kb/work/`, `kb/study/`, or `kb/coding/`, all `.txt` and `.md` files on the same subject get bundled together—so Gemini gets the full picture in a single fetch.
-
-### One Quick Tip for `.txt` Files
-Since `llms.txt` extracts Markdown `#` headings to figure out which bundle to fetch, plain `.txt` files without headings have slightly fewer routing clues. To keep accuracy high:
-1. **Give `.txt` files descriptive filenames** (e.g., `kb/finance/tax-rules-2026.txt` instead of `notes1.txt`)—filenames are always included in `llms.txt`.
-2. **Use `.md` for new notes** whenever possible, since `#` headings help Gemini navigate long bundles faster.
-
----
-
-## User
-
-I meant the code that you have given in the previous chats for creating new files in repository
-
----
-
-## Model
-
-Got it! Here is the exact breakdown of **only the files you need to create manually** from the previous guide—and where each one goes:
-
-### 1. The 2 Code Files (Exact Paths Required)
-Keep these **outside** `kb/`, in their exact folders:
-* **`scripts/build_kb.py`** → The Python builder script.
-* **`.github/workflows/build-kb.yml`** → The GitHub Action workflow.
-
-*(GitHub Actions only detects workflows inside `.github/workflows/`, and that workflow specifically runs `scripts/build_kb.py`, so those folder names must match exactly.)*
-
----
-
-### 2. Your Knowledge Files (`.md` and `.txt`)
-Put all your notes/docs inside **`kb/`**:
-* **`kb/core/...`** → Anything here (whether `.md` or `.txt`) goes into Tier 1 (`hot-core.md`).
-* **`kb/<any-topic>/...`** → Anything here (`.md` or `.txt` mixed together) becomes Tier 2 Cold Bundles.
-
-*(You do **not** need to make separate `.txt` and `.md` folders.)*
-
----
-
-### 3. Do NOT Create `_ai_bundles/` Manually!
-You might have seen **`llms.txt`** (`.txt`) and **`hot-core.md`** / **`hot-recent.md`** (`.md`) in the folder diagram earlier. **Do not create those files or the `_ai_bundles/` folder yourself.**
-
-Once you commit:
-1. `scripts/build_kb.py`
-2. `.github/workflows/build-kb.yml`
-3. At least one starter file inside `kb/` (e.g., `kb/core/overview.md`)
-
-…GitHub Actions will run automatically and generate **`_ai_bundles/llms.txt`**, **`hot-core.md`**, **`hot-recent.md`**, and **`cold/`** for you!
-
----
-
-## User
-
-Can I upload python script by creating new file now?
-
----
-
-## Model
-
-**Almost—just step out of `.github/workflows/` first!**
-
-Right now your screen shows you are inside **`ai-kb / .github / workflows /`**. If you create a new file from here, GitHub will put it inside the `workflows` folder by mistake.
-
-### Do This Instead:
-1. **Go back to the repo root:** Tap **`ai-kb`** in the blue path (`ai-kb / .github / workflows /`).
-2. **Create the script:** Once you are at the main `ai-kb` page, tap **`Add file`** (or **`+`**) → **Create new file**.
-3. **Name & commit:** Type `scripts/build_kb.py`, paste the Python code, and tap **Commit changes...**.
-
----
-
-### Quick Heads-Up Before You Commit
-If you haven't created any file inside `kb/` yet:
-* Creating `scripts/build_kb.py` will trigger the GitHub Action right away, and it will fail once with `"Missing 'kb/' directory"`—totally harmless, and it will turn green as soon as you add your first file in `kb/`.
-* **Pro tip:** If you want a green ✅ on the very first run, create `kb/core/overview.md` (with any short starter text) *first*, and then create `scripts/build_kb.py` right after!
-
----
-
-## User
-
-I have my knowledge base files in Google drive
-
----
-
-## Model
-
-thought Awesome! Look at those fresh 2026 facts:
-- Google Docs natively supports **File → Download → Markdown (.md)** AND (as of Oct 2026!) Google Drive / Docs natively opens and edits `.md` files directly in Markdown Mode without converting them!
-- In Google AI Studio, you *can* attach files from Google Drive manually per prompt—**however**, that's static attachment per chat (not dynamic RAG across dozens of folders, and doesn't auto-sync when files are edited after attaching).
-
-Now let's give the user **3 practical paths** from Google Drive into `inikashx-hub/ai-kb/kb/`, tailored to how often their files change and what file formats they have (Google Docs, `.md`/`.txt`, or `.pdf`/`.docx`):
-
-1. **Quickest Option (Manual Upload from Android/Desktop — 2 Minutes, Zero Extra Setup):**
-   - **If your Drive files are `.md` or `.txt`:**
-     - Go to `inikashx-hub/ai-kb` → navigate into `kb/core/` (or create `kb/<topic>/` with a tiny placeholder file first so the folder exists) → tap **Add file → Upload files**.
-     - On Android, when the file picker opens, tap the top-left menu (`≡`) and select **Google Drive** directly (or download them to your phone first) and upload multiple files at once!
-   - **If your files are Google Docs:**
-     - Open the Google Doc (in browser / desktop mode) → **File → Download → Markdown (`.md`)** (or Plain Text `.txt`) → upload to `kb/`.
-   - **If your files are PDFs or `.docx`:**
-     - Tell them honestly: right now `build_kb.py` only merges text formats (`.md`, `.txt`, `.csv`, `.json`), so it skips `.pdf`/`.docx`. *Offer:* "If your Drive is mostly PDFs or `.docx`, let me know and I can give you a 5-line update to `build-kb.yml` and `build_kb.py` that automatically extracts text from PDFs/Word docs inside GitHub Actions!"
-
-2. **Automatic Sync Option (Google Apps Script — Free, Runs Inside Google Drive, No PC Required!):**
-   - If they **actively edit** their knowledge base in Google Drive and want Drive changes to auto-push into `inikashx-hub/ai-kb/kb/` every hour or day:
-   - Explain the **Google Apps Script** bridge (without dumping a massive wall of code unless they want it, OR give a concise working overview and offer the copy-paste script!):
-     - Create a script at `script.google.com`.
-     - Give it a folder ID from Google Drive + a GitHub Personal Access Token (fine-grained PAT with `Contents: Read & Write` scoped *only* to `inikashx-hub/ai-kb`).
-     - It automatically converts Google Docs → Markdown/Text (`Drive.Files.export` / `DocumentApp`), reads `.md`/`.txt` files, preserves subfolders under `kb/`, and pushes updates via GitHub's Contents API on a schedule (e.g., every hour or on manual click).
-     - GitHub Actions then automatically rebuilds `hot-core.md`, `hot-recent.md`, `cold/`, and `llms.txt`!
-   - *(Wait: Let's offer to write the exact Google Apps Script for them if they want automatic sync, AND ask what file types are in their Drive—Google Docs, PDFs, `.docx`, or `.md`/`.txt`—so we don't overwhelm them with code they might not need if manual upload or PDF extraction is what they actually want!)*
-
-3. **Wait—Also Note the Native AI Studio Drive Button (and Why GitHub Hybrid Still Wins):**
-   - Mention briefly: Google AI Studio also has a built-in **Google Drive** attach option (`+` → **Drive**), which is great for quick one-off chats on 1–3 files, **but** it doesn't scale like RAG (you have to manually pick/re-attach files for new chats, and it can hit context limits fast if you attach an entire Drive folder). Keeping Drive synced into `ai-kb` gives you the true 2-tier RAG index (`llms.txt` + Hot/Cold bundles).
-
-Let's keep the response super structured, helpful, and focused on their next move! Ask one simple clarifying question at the end (*"What file types are mostly in your Google Drive—Google Docs, PDFs/Word files, or `.txt`/`.md`—and do you edit them daily or mostly keep them static?"*) so we can give them the exact snippet they need next (whether it's PDF/DOCX extraction in `build_kb.py` or the Google Apps Script auto-syncer).You have two clean ways to bridge **Google Drive → GitHub (`ai-kb/kb/`)**, depending on whether your Drive files are mostly static or edited regularly—plus one important check on file types.
-
----
-
-### First: Check Your File Types in Google Drive
-Right now, `build_kb.py` only bundles **plain-text formats** (`.md`, `.txt`, `.csv`, `.json`, `.yaml`, code files).
-* **Google Docs:** Need to be exported as **Markdown (`.md`)** or **Plain Text (`.txt`)** (`File → Download → Markdown (.md)` in Google Docs).
-* **`.md` / `.txt` files:** Ready to go as-is! *(Note: Google Drive also supports opening and editing `.md` files directly inside Google Docs now without converting them.)*
-* **PDFs / Word (`.docx`):** Currently skipped by `build_kb.py`—*though we can easily add a 5-line PDF/Word text extractor to your GitHub Action if you have lots of PDFs.*
 
 ---

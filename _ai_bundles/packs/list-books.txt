@@ -1,0 +1,83 @@
+# 1-Turn Packs — Subject: Books & Compendiums
+
+## PACK: 1. RBI & Monetary Policy [ch01-rbi-monetary-policy] (2 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch01-rbi-monetary-policy-p1.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch01-rbi-monetary-policy-p2.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 2. Banking & Financial Awareness [ch02-banking-financial-awareness] (5 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch02-banking-financial-awareness-p1.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch02-banking-financial-awareness-p2.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch02-banking-financial-awareness-p3.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch02-banking-financial-awareness-p4.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch02-banking-financial-awareness-p5.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 3. Indian Economy & Union Budget [ch03-indian-economy-union-budget] (1 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch03-indian-economy-union-budget-p1.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 4. Government Schemes & Initiatives [ch04-government-schemes-initiatives] (3 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-government-schemes-initiatives-p1.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-government-schemes-initiatives-p2.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch04-government-schemes-initiatives-p3.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 5. Appointments & Resignations [ch05-appointments-resignations] (1 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch05-appointments-resignations-p1.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 6. Awards & Honours [ch06-awards-honours] (1 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch06-awards-honours-p1.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 7. Summits, Conferences & Events [ch07-summits-conferences-events] (1 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch07-summits-conferences-events-p1.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 8. Reports, Indices & Rankings [ch08-reports-indices-rankings] (2 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch08-reports-indices-rankings-p1.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch08-reports-indices-rankings-p2.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 9. MoUs, Partnerships & Acquisitions [ch09-mous-partnerships-acquisitions] (1 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch09-mous-partnerships-acquisitions-p1.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 10. Science, Technology & Defence [ch10-science-technology-defence] (2 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch10-science-technology-defence-p1.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch10-science-technology-defence-p2.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 11. Sports & Championships [ch11-sports-championships] (1 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch11-sports-championships-p1.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 12. Books, Authors & Obituaries [ch12-books-authors-obituaries] (1 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch12-books-authors-obituaries-p1.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 13. Important Days & Themes [ch13-important-days-themes] (1 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch13-important-days-themes-p1.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 14. International Organisations & HQ [ch14-international-organisations-hq] (1 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch14-international-organisations-hq-p1.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 15. Indian Polity & Constitution [ch15-indian-polity-constitution] (1 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch15-indian-polity-constitution-p1.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 16. Geography, National Parks & Ramsar [ch16-geography-national-parks-ramsar] (1 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch16-geography-national-parks-ramsar-p1.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 17. Art, Culture & Heritage [ch17-art-culture-heritage] (1 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch17-art-culture-heritage-p1.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+## PACK: 18. Countries, Capitals & General Static GK [ch18-countries-capitals-general-stati] (2 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch18-countries-capitals-general-stati-p1.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch18-countries-capitals-general-stati-p2.md
+Read every URL above via URL context and answer my question with exact FILE citations.

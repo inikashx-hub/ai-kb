@@ -1,12 +1,323 @@
-# Cold Knowledge Bundle: chats-2026-11-part15
+# Subject Pack: chat-optimizing-two-step-llm-routing (Part 14/14)
 
 
 ---
-## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 17/17 — 4. Enforce Strict Router & Grounding Rules]
+## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 14/14]
 
-## [Chapter Context: 4. Enforce Strict Router & Grounding Rules]
+if (!skipQueue) {
+          const assets = collectAssets_(turnsForPdf);
+          const jobPayload = {
+            sourceId: id, updatedMs, baseName, pdfName, mode, existingPdfId,
+            expectedTc, nextTc: fullTc, nextTh: fullTh, part, partStartTc,
+            mdText: jobMdText, assets
+          };
+          if (pushJobToGitHub_(`jobs/${id}.json`, jobPayload, token)) {
+            prev.qt = updatedMs;
+            prev.qa = Date.now();
+            queuedPdfCount++;
+          }
+        }
+        saveStateKey_(props, stateMap, key, prev);
+      }
 
-const lock = LockService.getScriptLock();
+      if (queuedPdfCount > 0) {
+        triggerGitHubWorkflow_(token);
+        if (!paused) props.setProperty(CONFIG.DISPATCH_STATE_KEY, String(Date.now()));
+      }
+    }
+
+    // PHASE 3: Batched Selective Sync to Public ai-kb Repo
+    const lastKbMs = Number(props.getProperty(CONFIG.KB_DISPATCH_STATE_KEY) || 0);
+    const canDispatchKb = forceKbFlush || (Date.now() - lastKbMs >= CONFIG.KB_BATCH_HOURS * 60 * 60 * 1000);
+    const kbIdleMs = CONFIG.KB_IDLE_MINUTES * 60 * 1000;
+    let kbTrackedCount = 0;
+
+    if (canDispatchKb && !paused) {
+      const kbOps = [];
+      const pendingStateUpdates = [];
+
+      for (const key of Object.keys(stateMap)) {
+        if (!key.startsWith(CONFIG.STATE_PREFIX)) continue;
+        if (kbOps.length >= CONFIG.KB_MAX_BATCH_FILES) break;
+        if (Date.now() - startTime > 240000) { paused = true; break; }
+
+        let prev = {};
+        try { prev = JSON.parse(stateMap[key]); } catch (e) { continue; }
+        if (!prev.t || !prev.m) continue;
+
+        const targetPath = prev.kbTarget || null;
+        const oldPath = prev.kbP || null;
+        if (targetPath) kbTrackedCount++;
+        if (!targetPath && !oldPath) continue;
+        if (targetPath && prev.kbT === prev.t && oldPath === targetPath) continue;
+        if (!forceKbFlush && (Date.now() - prev.t < kbIdleMs)) continue;
+
+        const id = key.slice(CONFIG.STATE_PREFIX.length);
+        let srcFile;
+        try { srcFile = DriveApp.getFileById(id); } catch (e) { continue; }
+
+        if (srcFile.isTrashed() || !targetPath) {
+          if (oldPath) {
+            kbOps.push({ path: oldPath, content: null });
+            delete prev.kbP; delete prev.kbT; delete prev.kbTarget;
+            pendingStateUpdates.push({ key, prev });
+          }
+          continue;
+        }
+
+        const updatedMs = srcFile.getLastUpdated().getTime();
+        if (!forceKbFlush && (Date.now() - updatedMs < kbIdleMs)) continue;
+
+        let mdText = '';
+        try {
+          const mdFile = DriveApp.getFileById(prev.m);
+          if (mdFile.isTrashed()) continue;
+          mdText = mdFile.getBlob().getDataAsString('UTF-8');
+        } catch (e) { continue; }
+
+        if (oldPath && oldPath !== targetPath) {
+          kbOps.push({ path: oldPath, content: null });
+        }
+        kbOps.push({ path: targetPath, content: mdText });
+        prev.kbP = targetPath;
+        prev.kbT = prev.t;
+        pendingStateUpdates.push({ key, prev });
+      }
+
+      if (kbOps.length > 0) {
+        const pushed = pushBatchToGitHubRepo_(
+          CONFIG.KB_GITHUB_OWNER,
+          CONFIG.KB_GITHUB_REPO,
+          CONFIG.KB_GITHUB_BRANCH,
+          kbOps,
+          `sync: batch update ${kbOps.length} KB file(s) from Drive`,
+          kbToken
+        );
+        if (pushed) {
+          kbSyncedCount = pendingStateUpdates.length;
+          for (const item of pendingStateUpdates) {
+            saveStateKey_(props, stateMap, item.key, item.prev);
+          }
+          if (!paused) props.setProperty(CONFIG.KB_DISPATCH_STATE_KEY, String(Date.now()));
+        }
+      }
+    }
+
+    console.log(paused
+      ? `Paused at time guard. Scanned: ${files.length}, MD: ${mdCount}, KB tracked: ${kbTrackedCount}, PDF queued: ${queuedPdfCount}, ai-kb synced: ${kbSyncedCount}.`
+      : `Done! Scanned: ${files.length}, MD: ${mdCount}, KB tracked: ${kbTrackedCount}, PDF queued: ${queuedPdfCount}, ai-kb synced: ${kbSyncedCount}`);
+  } finally {
+    cache.remove('gh_sync_running');
+  }
+}
+
+function saveStateKey_(props, stateMap, key, prev) {
+  const pLock = LockService.getScriptLock();
+  pLock.waitLock(10000);
+  try {
+    let latest = {};
+    const latestRaw = props.getProperty(key);
+    if (latestRaw) { try { latest = JSON.parse(latestRaw); } catch (e) {} }
+    const merged = Object.assign({}, latest, prev);
+    if (!prev.kbP) delete merged.kbP;
+    if (!prev.kbT) delete merged.kbT;
+    if (!prev.kbTarget) delete merged.kbTarget;
+    const serialized = JSON.stringify(merged);
+    props.setProperty(key, serialized);
+    stateMap[key] = serialized;
+  } finally {
+    pLock.releaseLock();
+  }
+}
+
+function sanitizePathSlug_(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'general';
+}
+
+function resolveKbTarget_(file, baseName, rootId) {
+  const rawName = file.getName();
+  let isCoreTag = CONFIG.KB_CORE_TAG_REGEX.test(rawName);
+  let isKbTag = CONFIG.KB_TAG_REGEX.test(rawName);
+
+  const chain = [];
+  let cur = file;
+  for (let depth = 0; depth < 6; depth++) {
+    const parents = cur.getParents();
+    if (!parents.hasNext()) break;
+    const parent = parents.next();
+    if (rootId && parent.getId() === rootId) break;
+    const pName = parent.getName();
+    if (CONFIG.SOURCE_FOLDER_NAMES.some(n => n.toLowerCase() === pName.toLowerCase())) break;
+    const segs = pName.split('/').map(s => s.trim()).filter(Boolean);
+    for (let i = segs.length - 1; i >= 0; i--) {
+      if (!CONFIG.SOURCE_FOLDER_NAMES.some(n => n.toLowerCase() === segs[i].toLowerCase())) {
+        if (CONFIG.KB_CORE_TAG_REGEX.test(segs[i])) isCoreTag = true;
+        if (CONFIG.KB_TAG_REGEX.test(segs[i])) isKbTag = true;
+        chain.unshift(segs[i]);
+      }
+    }
+    cur = parent;
+  }
+
+  const kbIdx = chain.findIndex(n => n.toLowerCase() === CONFIG.KB_FOLDER_NAME.toLowerCase());
+  const inKbFolder = kbIdx !== -1;
+  if (!isCoreTag && !isKbTag && !inKbFolder) return null;
+
+  const relFolders = inKbFolder ? chain.slice(kbIdx + 1) : chain;
+  const cleanFile = baseName
+    .replace(/\s*\[(kb|core)\]\s*/gi, ' ')
+    .replace(/[#?%\\/:*|"<>]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim() || 'Untitled';
+
+  const cleanFolders = relFolders
+    .map(f => sanitizePathSlug_(f.replace(/\s*\[(kb|core)\]\s*/gi, ' ')))
+    .filter(Boolean);
+
+  if (isCoreTag || (cleanFolders.length > 0 && cleanFolders[0] === 'core')) {
+    return `core/${cleanFile}.md`;
+  }
+  if (cleanFolders.length > 0) {
+    return `chats/${cleanFolders.join('/')}/${cleanFile}.md`;
+  }
+  return `chats/${cleanFile}.md`;
+}
+
+function pushBatchToGitHubRepo_(owner, repo, branch, ops, commitMessage, token) {
+  const baseApi = `https://api.github.com/repos/${owner}/${repo}`;
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
+
+  const refResp = UrlFetchApp.fetch(`${baseApi}/git/ref/heads/${branch}`, { method: 'get', headers, muteHttpExceptions: true });
+  if (refResp.getResponseCode() !== 200) {
+    console.error(`KB ref fetch failed (${refResp.getResponseCode()}): ${refResp.getContentText()}`);
+    return false;
+  }
+  const headSha = JSON.parse(refResp.getContentText()).object.sha;
+
+  const commitResp = UrlFetchApp.fetch(`${baseApi}/git/commits/${headSha}`, { method: 'get', headers, muteHttpExceptions: true });
+  if (commitResp.getResponseCode() !== 200) {
+    console.error(`KB commit fetch failed (${commitResp.getResponseCode()}): ${commitResp.getContentText()}`);
+    return false;
+  }
+  const baseTreeSha = JSON.parse(commitResp.getContentText()).tree.sha;
+
+  const treeEntries = [];
+  for (const op of ops) {
+    if (op.content === null) {
+      const chk = UrlFetchApp.fetch(`${baseApi}/contents/${encodeURI(op.path)}?ref=${branch}`, {
+        method: 'get', headers, muteHttpExceptions: true
+      });
+      if (chk.getResponseCode() === 200) {
+        treeEntries.push({ path: op.path, mode: '100644', type: 'blob', sha: null });
+      }
+      continue;
+    }
+    const blobResp = UrlFetchApp.fetch(`${baseApi}/git/blobs`, {
+      method: 'post', contentType: 'application/json', headers,
+      payload: JSON.stringify({ content: op.content, encoding: 'utf-8' }), muteHttpExceptions: true
+    });
+    if (blobResp.getResponseCode() !== 201) {
+      console.error(`KB blob failed (${blobResp.getResponseCode()}): ${blobResp.getContentText()}`);
+      return false;
+    }
+    const blobSha = JSON.parse(blobResp.getContentText()).sha;
+    treeEntries.push({ path: op.path, mode: '100644', type: 'blob', sha: blobSha });
+  }
+
+  if (treeEntries.length === 0) return true;
+
+  const treeResp = UrlFetchApp.fetch(`${baseApi}/git/trees`, {
+    method: 'post', contentType: 'application/json', headers,
+    payload: JSON.stringify({ base_tree: baseTreeSha, tree: treeEntries }), muteHttpExceptions: true
+  });
+  if (treeResp.getResponseCode() !== 201) {
+    console.error(`KB tree failed (${treeResp.getResponseCode()}): ${treeResp.getContentText()}`);
+    return false;
+  }
+  const newTreeSha = JSON.parse(treeResp.getContentText()).sha;
+
+  const newCommitResp = UrlFetchApp.fetch(`${baseApi}/git/commits`, {
+    method: 'post', contentType: 'application/json', headers,
+    payload: JSON.stringify({ message: commitMessage, tree: newTreeSha, parents: [headSha] }), muteHttpExceptions: true
+  });
+  if (newCommitResp.getResponseCode() !== 201) {
+    console.error(`KB commit create failed (${newCommitResp.getResponseCode()}): ${newCommitResp.getContentText()}`);
+    return false;
+  }
+  const newCommitSha = JSON.parse(newCommitResp.getContentText()).sha;
+
+  const patchResp = UrlFetchApp.fetch(`${baseApi}/git/refs/heads/${branch}`, {
+    method: 'patch', contentType: 'application/json', headers,
+    payload: JSON.stringify({ sha: newCommitSha }), muteHttpExceptions: true
+  });
+  if (patchResp.getResponseCode() !== 200) {
+    console.error(`KB ref update failed (${patchResp.getResponseCode()}): ${patchResp.getContentText()}`);
+    return false;
+  }
+  return true;
+}
+
+function collectAssets_(turns) {
+  const assets = [];
+  for (const turn of turns) {
+    for (const item of turn.items) {
+      if (item.type === 'image_b64' && item.data && item.data.length < 7000000) {
+        assets.push({ mimeType: item.mimeType || 'image/png', dataB64: item.data });
+      } else if (item.type === 'image_drive') {
+        try {
+          const blob = DriveApp.getFileById(item.fileId).getBlob();
+          const bytes = blob.getBytes();
+          if (bytes.length < 5 * 1024 * 1024) {
+            assets.push({ mimeType: blob.getContentType() || 'image/png', dataB64: Utilities.base64Encode(bytes) });
+          }
+        } catch (e) {}
+      }
+    }
+  }
+  return assets;
+}
+
+function requeueAllPastChats() {
+  const props = PropertiesService.getScriptProperties();
+  props.deleteProperty(CONFIG.SCAN_STATE_KEY);
+  props.deleteProperty(CONFIG.DISPATCH_STATE_KEY);
+  props.deleteProperty(CONFIG.KB_DISPATCH_STATE_KEY);
+  const all = props.getProperties();
+  let resetCount = 0;
+
+  for (const key of Object.keys(all)) {
+    if (!key.startsWith(CONFIG.STATE_PREFIX)) continue;
+    try {
+      const st = JSON.parse(all[key]);
+      delete st.t; delete st.pt; delete st.qt; delete st.qa;
+      delete st.tc; delete st.th; delete st.part; delete st.partStartTc;
+      delete st.kbT; delete st.kbP; delete st.kbTarget; delete st.isPlainText;
+      props.setProperty(key, JSON.stringify(st));
+      resetCount++;
+    } catch (e) {}
+  }
+  console.log(`Reset ${resetCount} chat(s). Running full sync...`);
+  syncCleanMarkdown_(true, true);
+}
+
+function doPost(e) {
+  try {
+    const { secret } = getSecrets_();
+    const payload = JSON.parse(e.postData.contents);
+    if (!payload || payload.secret !== secret) {
+      return jsonResponse_({ ok: false, error: 'Unauthorized' });
+    }
+
+    if (payload.action === 'get_pdf') {
+      const existing = DriveApp.getFileById(payload.fileId);
+      if (existing.isTrashed()) {
+        return jsonResponse_({ ok: false, error: 'Existing PDF is trashed' });
+      }
+      const bytes = existing.getBlob().getBytes();
+      return jsonResponse_({ ok: true, pdfB64: Utilities.base64Encode(bytes) });
+    }
+
+    const lock = LockService.getScriptLock();
     lock.waitLock(30000);
     try {
       const pdfFolder = getOrCreateFolder_(CONFIG.PDF_FOLDER_NAME);

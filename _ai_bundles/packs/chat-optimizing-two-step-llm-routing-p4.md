@@ -1,10 +1,138 @@
-# Cold Knowledge Bundle: chats-2026-11-part5
+# Subject Pack: chat-optimizing-two-step-llm-routing (Part 4/14)
 
 
 ---
-## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 7/17 — 4. Enforce Strict Router & Grounding Rules]
+## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 4/14]
 
-## [Chapter Context: 4. Enforce Strict Router & Grounding Rules]
+written.append( { "url": f"{RAW_BASE}/_ai_bundles/cold/{filename}", "group": f"{group_name}{suffix}", "titles": titles, "prompts": list(dict.fromkeys(prompts))[:10], "sections": list(dict.fromkeys(sections))[:16], "summaries": list(dict.fromkeys(summaries)), "keywords": list(dict.fromkeys(keywords)), } ) return written
+
+def main: scan_dirs = [d for d in (Path("core"), Path("chats"), Path("kb")) if d.exists] if not scan_dirs: raise SystemExit("Missing 'chats/' or 'core/' directory.")
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True) shutil.rmtree(COLD_DIR, ignore_errors=True) COLD_DIR.mkdir(parents=True, exist_ok=True)
+
+    git_recent = get_git_recent_files(RECENT_DAYS) hot_core_blocks = [] recent_candidates = [] # (sort_date, block, byte_size) cold_groups: dict[str, list[dict]] = {}
+
+    for root_dir in scan_dirs: for path in sorted(root_dir.rglob("*")): if not path.is_file or path.suffix.lower not in ALLOWED_EXTS: continue
+
+            raw_text = path.read_text(encoding="utf-8", errors="ignore") meta, body = parse_frontmatter(raw_text) body = clean_chat_wrapper(body) top_info = extract_doc_info(path, body) parts = path.parts
+
+            is_hot = ( root_dir.name == "core" or (root_dir.name == "kb" and len(parts) > 2 and parts == "core") or meta.get("tier") == "hot" )
+
+            if is_hot: hot_core_blocks.append(format_file_block(path, body)) continue
+
+            # Tier 1 Recent check (only compact files <= MAX_RECENT_FILE_BYTES)
+            body_bytes = len(body.encode("utf-8")) if top_info["updated_date"] is not None: is_recent = (TODAY - top_info["updated_date"]).days <= RECENT_DAYS sort_d = top_info["updated_date"] else: is_recent = path in git_recent sort_d = TODAY if is_recent else date.min
+
+            if is_recent and body_bytes <= MAX_RECENT_FILE_BYTES: blk = format_file_block(path, body) recent_candidates.append((sort_d, blk, len(blk.encode("utf-8"))))
+
+            # Determine Tier 2 Cold group
+            if root_dir.name == "chats": if len(parts) > 2: group_key = sanitize_slug(parts) elif top_info["updated_date"] is not None: group_key = f"chats-{top_info['updated_date'].strftime('%Y-%m')}" else: group_key = "chats-general" else: raw_sub = parts if len(parts) > 2 else "general" group_key = sanitize_slug(raw_sub) if group_key == "chats" and top_info["updated_date"] is not None: group_key = f"chats-{top_info['updated_date'].strftime('%Y-%m')}"
+
+            # Split giant files into <65 KB parts and index each part's own headings
+            body_parts = split_large_body(body, MAX_COLD_BYTES - 1500) total_parts = len(body_parts) for idx, part_body in enumerate(body_parts, start=1): part_label = f"[Part {idx}/{total_parts}]" if total_parts > 1 else "" part_info = extract_doc_info(path, part_body, fallback_title=top_info["title"]) cold_groups.setdefault(group_key, []).append( { "path": path, "body": part_body, "part_label": part_label, "title": top_info["title"], "updated_date": top_info["updated_date"], "prompts": part_info["prompts"], "sections": part_info["sections"], "summary": meta.get("summary", ""), "keywords": meta.get("keywords", ""), } )
+
+    # Write Tier 1 Core
+    core_text = ( "# Tier 1: Core Knowledge\n" + "".join(hot_core_blocks) if hot_core_blocks else "# Tier 1: Core Knowledge\nNo core files configured yet." ) (OUT_DIR / "hot-core.md").write_text(core_text, encoding="utf-8")
+
+    # Write Tier 1 Recent (newest first, capped at MAX_RECENT_TOTAL_BYTES)
+    recent_candidates.sort(key=lambda x: x, reverse=True) selected_recent, recent_bytes = [], 0 for _, blk, b_size in recent_candidates: if selected_recent and (recent_bytes + b_size > MAX_RECENT_TOTAL_BYTES): break selected_recent.append(blk) recent_bytes += b_size
+
+    recent_text = ( f"# Tier 1: Recent Compact Chats (Last {RECENT_DAYS} Days)\n" + "".join(selected_recent) if selected_recent else f"# Tier 1: Recent Changes\nNo compact chats updated in the last {RECENT_DAYS} days (large compendiums are indexed in llms.txt)." ) (OUT_DIR / "hot-recent.md").write_text(recent_text, encoding="utf-8")
+
+    # Write Tier 2 Cold Bundles & llms.txt
+    index_entries = [] for group_name, items in sorted(cold_groups.items): index_entries.extend(write_cold_chunks(group_name, items))
+
+    lines = [ "# Knowledge Base Index (Tier 2 Cold Bundles)", "# Note: Core docs and recent compact chats are pre-loaded in Tier 1. Large compendiums are split into full-read Cold parts below.", "", ] for entry in index_entries: lines.append(f"- URL: {entry['url']}") lines.append(f" Topic Group: {entry['group']}") lines.append(f" Files/Parts: {' | '.join(entry['titles'])}") if entry["prompts"]: lines.append(f" User Questions: {' | '.join(entry['prompts'])}") if entry["sections"]: lines.append(f" Topics/Chapters: {' | '.join(entry['sections'])}") if entry["summaries"]: lines.append(f" Summary: {' | '.join(entry['summaries'])}") if entry["keywords"]: lines.append(f" Keywords: {' | '.join(entry['keywords'])}") lines.append("")
+
+    (OUT_DIR / "llms.txt").write_text("\n".join(lines), encoding="utf-8") print(f"Built {len(index_entries)} cold bundle(s) and updated Tier 1 + llms.txt.")
+
+if __name__ == "__main__": main ```
+
+3. Tap **Commit changes...**.
+
+---
+
+### Quick Test After Commit
+1. Wait ~15 seconds (check **More ▾ → Actions** until green ✅).
+2. In Google AI Studio, turn **Grounding with Google Search → OFF** (leave only **URL context → ON**).
+3. Start a **fresh chat**, paste your **3 pinned URLs + a question about Chapter 4 of `document.md`** (e.g., *"Which exact Cold Bundle has Chapter 4 Government Schemes, and what topics/years are inside it?"*), and watch it route cleanly to the exact `<65 KB` part!
+
+---
+
+## User
+
+# Untitled prompt
+
+---
+
+## You
+
+Read every URL above via URL context and answer my previous question with exact FILE citations. Comprehensive analysis of the examiner's question setting pattern for scheme questions
+
+---
+
+## AI Studio
+
+Tier 1 contains no relevant compendium files, so I am requesting Part 1 (the only bundle in `llms.txt` listing `Included Topic Chapters`) alongside evenly spaced Parts 4, 8, and 12 to map the archive and locate all scheme questions.
+
+```text
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-general-part1.b4ef2929.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-general-part4.c8517c24.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-general-part8.1bd816b5.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-general-part12.c260178d.md
+Read every URL above via URL context and answer my previous question with exact FILE citations.
+```
+
+---
+
+## You
+
+Read every URL above via URL context and answer my previous question with exact FILE citations.
+
+---
+
+## AI Studio
+
+Part 1 identifies Chapter 4 (*Government Schemes & Initiatives*, 342 questions) and Chapter 3 (*Indian Economy & Union Budget*, 156 questions), which fall between Part 4 (Chapter 2) and Part 8 (Chapter 7), so please load Parts 5, 6, and 7 to read those chapters in full.
+
+```text
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-general-part5.5b52c641.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-general-part6.2c69a78c.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-general-part7.a6658fe9.md
+Read every URL above via URL context and answer my previous question with exact FILE citations.
+```
+
+---
+
+## You
+
+Read every URL above via URL context and answer my previous question with exact FILE citations.
+
+---
+
+## AI Studio
+
+### Evidence Scope & Archive Structure
+
+This analysis is grounded in `FILE: chats/document.md [Part 5/13]`, `FILE: chats/document.md [Part 6/13]`, and `FILE: chats/document.md [Part 7/13]`:
+- **`FILE: chats/document.md [Part 5/13]`** contains the tail of Chapter 2 (*Banking & Financial Awareness*, Q593–Q642), the entire Chapter 3 (*Indian Economy & Union Budget*, 156 Qs: Q1–Q156), and the start of Chapter 4 (*Government Schemes & Initiatives*, 342 Qs: Q1–Q19 retrieved before browse snippet truncation).
+- **`FILE: chats/document.md [Part 6/13]`** contains Chapter 4 (*Government Schemes & Initiatives*) Q72–Q286 retrieved before browse snippet truncation.
+- **`FILE: chats/document.md [Part 7/13]`** begins in Chapter 5 (*Appointments & Resignations*) and continues into Chapter 6 (*Awards & Honours*), confirming that Chapter 4 ends inside Part 6. *(Note: Chapter 4 Q20–Q71 in Part 5 and Q287–Q342 in Part 6 fall beyond the URL-context browse snippet length limit and are excluded from sample counts below.)*
+
+---
+
+### 1. Volume, Year-Wise Consistency & Cross-Chapter Distribution
+
+- **Sustained High Weightage:** Chapter 4 (*Government Schemes & Initiatives*) comprises **342 questions** across 2019–2026: **2019 (70)**, **2020 (13)**, **2021 (53)**, **2022 (44)**, **2023 (50)**, **2024 (48)**, **2025 (48)**, and **2026 (16, partial year)**. Excluding the pandemic-disrupted 2020 cycle, Mains papers consistently draw **44–53 dedicated scheme questions per year**.
+- **Schemes Leak Across Three Chapters:** Examiners do not restrict scheme testing to Chapter 4:
+  - **Budget-linked Funds & Production Schemes (Chapter 3):** Examples include **PLI** domestic electronics output jumping from Rs 1.90 lakh cr to Rs 9.52 lakh cr (Q22), the **Urban Challenge Fund** of Rs 1 lakh cr (Q23), **RoDTEP** deadline extension (Q21), Kharif P&K fertiliser subsidy of Rs 37,216 cr (Q25), **UIDF** statement testing (Q39), Budget 2023–24 **Agricultural Accelerator Fund / EMRS / DigiLocker** (Q46–Q48), **Sovereign Green Bonds** of Rs 16,000 cr (Q71), **10,000 FPOs** in Budget 2020 (Q101), and **Carbon Credit Trading Scheme (CCTS)** administration by BEE (Q2).
+  - **Bank-Routed / Small Savings Schemes (Chapter 2):** Examples include **Sovereign Gold Bonds (SGB)** eligible investors (Q637), quarterly interest-rate review of **Small Savings Schemes** (Q641), and commercial bank deposit schemes like Axis Bank's *Express Fixed Scheme* (Q593) and ICICI's *FD Health* (Q599).
+
+---
+
+### 2. The Nine Recurring Question-Setting Hooks
+
+Across the **234 directly observed Chapter 4 questions** (Q1–Q19 in `[Part 5/13]` and Q72–Q286 in `[Part 6/13]`) plus scheme items in Chapters 2–3, examiners rely on nine repeatable "angle triggers":
 
 #### (1) Hyper-Specific Numerical Parameters & Sub-Component Figures (Dominant Hook)
 Examiners test exact numbers—and increasingly ask for **sub-shares, revised caps, and multi-tier brackets** rather than just headline outlays:
@@ -244,258 +372,3 @@ def extract_doc_info(path: Path, text: str, fallback_title: str = "") -> dict:
             compact = " ".join(p.split())
             if compact:
                 prompts.append(compact[:110] + ("..." if len(compact) > 110 else ""))
-
-        h3s = re.findall(r"^###\s+(.+)$", text, re.MULTILINE)
-        skip = {"conclusion", "summary", "summary checklist before applying:"}
-        sections = [h.strip()[:90] for h in h3s if h.strip().lower() not in skip][:8]
-    else:
-        # Prioritize chapter-level markers first, then H3 subheadings
-        seen = set()
-        for line in text.splitlines():
-            ch = find_chapter_marker(line)
-            if ch and ch not in seen:
-                seen.add(ch)
-                sections.append(ch)
-                if len(sections) >= 15:
-                    break
-        if len(sections) < 15:
-            for h in re.findall(r"^###\s+(.+)$", text, re.MULTILINE):
-                clean_h = " ".join(h.split())[:90]
-                if clean_h and clean_h not in seen:
-                    seen.add(clean_h)
-                    sections.append(clean_h)
-                    if len(sections) >= 15:
-                        break
-
-    return {
-        "title": title,
-        "updated_date": updated_date,
-        "prompts": prompts,
-        "sections": sections,
-    }
-
-def sanitize_slug(name: str) -> str:
-    slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", name).strip("-").lower()
-    return slug or "general"
-
-def format_file_block(rel_path: Path, body: str, part_label: str = "") -> str:
-    label = f" {part_label}" if part_label else ""
-    return f"\n\n---\n## FILE: `{rel_path.as_posix()}`{label}\n\n{body}\n"
-
-def write_cold_chunks(group_name: str, items: list[dict]) -> list[dict]:
-    chunks = []
-    current_blocks, current_meta, current_size = [], [], 0
-
-    for item in items:
-        block = format_file_block(item["path"], item["body"], item.get("part_label", ""))
-        block_size = len(block.encode("utf-8"))
-        if current_blocks and (current_size + block_size > MAX_COLD_BYTES):
-            chunks.append((current_blocks, current_meta))
-            current_blocks, current_meta, current_size = [], [], 0
-        current_blocks.append(block)
-        current_meta.append(item)
-        current_size += block_size
-
-    if current_blocks:
-        chunks.append((current_blocks, current_meta))
-
-    written = []
-    for idx, (blocks, metas) in enumerate(chunks, start=1):
-        suffix = f"-part{idx}" if len(chunks) > 1 else ""
-        content = f"# Cold Knowledge Bundle: {group_name}{suffix}\n" + "".join(blocks)
-        short_hash = hashlib.md5(content.encode("utf-8")).hexdigest()[:8]
-        filename = f"cold-{group_name}{suffix}.{short_hash}.md"
-        (COLD_DIR / filename).write_text(content, encoding="utf-8")
-
-        titles, prompts, sections, summaries, keywords = [], [], [], [], []
-        seen_titles = set()
-        for m in metas:
-            d = m["updated_date"].isoformat() if m["updated_date"] else ""
-            lbl = f"{m['title']} {m.get('part_label', '')}".strip()
-            full_t = f"{lbl} ({d})" if d else lbl
-            if full_t not in seen_titles:
-                seen_titles.add(full_t)
-                titles.append(full_t)
-            prompts.extend(m["prompts"])
-            sections.extend(m["sections"])
-            if m["summary"]:
-                summaries.append(m["summary"])
-            if m["keywords"]:
-                keywords.append(m["keywords"])
-
-        written.append(
-            {
-                "url": f"{RAW_BASE}/_ai_bundles/cold/{filename}",
-                "group": f"{group_name}{suffix}",
-                "titles": titles,
-                "prompts": list(dict.fromkeys(prompts))[:10],
-                "sections": list(dict.fromkeys(sections))[:16],
-                "summaries": list(dict.fromkeys(summaries)),
-                "keywords": list(dict.fromkeys(keywords)),
-            }
-        )
-    return written
-
-def main():
-    scan_dirs = [d for d in (Path("core"), Path("chats"), Path("kb")) if d.exists()]
-    if not scan_dirs:
-        raise SystemExit("Missing 'chats/' or 'core/' directory.")
-
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    shutil.rmtree(COLD_DIR, ignore_errors=True)
-    COLD_DIR.mkdir(parents=True, exist_ok=True)
-
-    git_recent = get_git_recent_files(RECENT_DAYS)
-    hot_core_blocks = []
-    recent_candidates = []
-    cold_groups: dict[str, list[dict]] = {}
-
-    for root_dir in scan_dirs:
-        for path in sorted(root_dir.rglob("*")):
-            if not path.is_file() or path.suffix.lower() not in ALLOWED_EXTS:
-                continue
-
-            raw_text = path.read_text(encoding="utf-8", errors="ignore")
-            meta, body = parse_frontmatter(raw_text)
-            body = clean_chat_wrapper(body)
-            top_info = extract_doc_info(path, body)
-            parts = path.parts
-
-            is_hot = (
-                root_dir.name == "core"
-                or (root_dir.name == "kb" and len(parts) > 2 and parts[1] == "core")
-                or meta.get("tier") == "hot"
-            )
-
-            if is_hot:
-                hot_core_blocks.append(format_file_block(path, body))
-                continue
-
-            body_bytes = len(body.encode("utf-8"))
-            if top_info["updated_date"] is not None:
-                is_recent = (TODAY - top_info["updated_date"]).days <= RECENT_DAYS
-                sort_d = top_info["updated_date"]
-            else:
-                is_recent = path in git_recent
-                sort_d = TODAY if is_recent else date.min
-
-            if is_recent and body_bytes <= MAX_RECENT_FILE_BYTES:
-                blk = format_file_block(path, body)
-                recent_candidates.append((sort_d, blk, len(blk.encode("utf-8"))))
-
-            if root_dir.name == "chats":
-                if len(parts) > 2:
-                    group_key = sanitize_slug(parts[1])
-                elif top_info["updated_date"] is not None:
-                    group_key = f"chats-{top_info['updated_date'].strftime('%Y-%m')}"
-                else:
-                    group_key = "chats-general"
-            else:
-                raw_sub = parts[1] if len(parts) > 2 else "general"
-                group_key = sanitize_slug(raw_sub)
-                if group_key == "chats" and top_info["updated_date"] is not None:
-                    group_key = f"chats-{top_info['updated_date'].strftime('%Y-%m')}"
-
-            body_parts = split_large_body(body, MAX_COLD_BYTES - 1500)
-            total_parts = len(body_parts)
-            for idx, part_body in enumerate(body_parts, start=1):
-                part_label = f"[Part {idx}/{total_parts}]" if total_parts > 1 else ""
-                part_info = extract_doc_info(path, part_body, fallback_title=top_info["title"])
-                cold_groups.setdefault(group_key, []).append(
-                    {
-                        "path": path,
-                        "body": part_body,
-                        "part_label": part_label,
-                        "title": top_info["title"],
-                        "updated_date": top_info["updated_date"],
-                        "prompts": part_info["prompts"],
-                        "sections": part_info["sections"],
-                        "summary": meta.get("summary", ""),
-                        "keywords": meta.get("keywords", ""),
-                    }
-                )
-
-    core_text = (
-        "# Tier 1: Core Knowledge\n" + "".join(hot_core_blocks)
-        if hot_core_blocks
-        else "# Tier 1: Core Knowledge\nNo core files configured yet."
-    )
-    (OUT_DIR / "hot-core.md").write_text(core_text, encoding="utf-8")
-
-    recent_candidates.sort(key=lambda x: x[0], reverse=True)
-    selected_recent, recent_bytes = [], 0
-    for _, blk, b_size in recent_candidates:
-        if selected_recent and (recent_bytes + b_size > MAX_RECENT_TOTAL_BYTES):
-            break
-        selected_recent.append(blk)
-        recent_bytes += b_size
-
-    recent_text = (
-        f"# Tier 1: Recent Compact Chats (Last {RECENT_DAYS} Days)\n" + "".join(selected_recent)
-        if selected_recent
-        else f"# Tier 1: Recent Changes\nNo compact chats updated in the last {RECENT_DAYS} days (large compendiums are indexed in llms.txt)."
-    )
-    (OUT_DIR / "hot-recent.md").write_text(recent_text, encoding="utf-8")
-
-    index_entries = []
-    for group_name, items in sorted(cold_groups.items()):
-        index_entries.extend(write_cold_chunks(group_name, items))
-
-    lines = [
-        "# Knowledge Base Index (Tier 2 Cold Bundles)",
-        "# Note: Core docs and recent compact chats are pre-loaded in Tier 1. Large compendiums are split into full-read <=35KB Cold parts below.",
-        "",
-    ]
-    for entry in index_entries:
-        lines.append(f"- URL: {entry['url']}")
-        lines.append(f"  Topic Group: {entry['group']}")
-        lines.append(f"  Files/Parts: {' | '.join(entry['titles'])}")
-        if entry["prompts"]:
-            lines.append(f"  User Questions: {' | '.join(entry['prompts'])}")
-        if entry["sections"]:
-            lines.append(f"  Topics/Chapters: {' | '.join(entry['sections'])}")
-        if entry["summaries"]:
-            lines.append(f"  Summary: {' | '.join(entry['summaries'])}")
-        if entry["keywords"]:
-            lines.append(f"  Keywords: {' | '.join(entry['keywords'])}")
-        lines.append("")
-
-    (OUT_DIR / "llms.txt").write_text("\n".join(lines), encoding="utf-8")
-    print(f"Built {len(index_entries)} cold bundle(s) and updated Tier 1 + llms.txt.")
-
-if __name__ == "__main__":
-    main()
-```
-
----
-
-### Also Update Rule 2 in Your AI Studio System Instructions
-Right now your System Instructions cap Gemini at `1 to 4` Cold URLs. Since each Cold part is now **35 KB** (instead of 65 KB), change that phrase to:
-> *"Pick the **1 to 8** most relevant Cold Bundle URLs from `llms.txt`."*
-
-Once the Action finishes, re-ask the exact same question—you should see **direct 1-hop routing straight into Chapter 4** with **zero skipped questions (`Q1–Q342` all readable)**!
-
----
-
-## User
-
-It read 11 to 18 chapters rather than the scheme chapter
-
----
-
-## Model
-
-Two things likely caused that:
-1. When we halved the chunk size (`65 KB` → `35 KB`), the total number of parts roughly doubled—so **Chapter 4 shifted to different part numbers**, and our new `running_chapter` tracker may have picked up chapters `11–18` from the **Table of Contents** in Part 1 (or missed the heading style used in Chapter 4 of `document.md`).
-2. Or `raw.githubusercontent.com` served a cached `llms.txt` right after your commit.
-
-To fix it with 100% precision instead of guessing, could you paste the contents of **`_ai_bundles/llms.txt`** here? *(Open `_ai_bundles/llms.txt` in your GitHub repo → tap **Raw** → copy & paste it.)*
-
-Once I see what `Topics/Chapters` were written for each part in `llms.txt`, I can immediately fix the exact heading rule so Gemini goes straight to Chapter 4 on Turn 2.
-
----
-
-## User
-
-# Knowledge Base Index (Tier 2 Cold Bundles)
-# Note: Core docs and recent compact chats are pre-loaded in Tier 1. Large compendiums are split into full-read <=35KB Cold parts below.
