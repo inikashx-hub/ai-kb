@@ -1,5 +1,5 @@
 # 1-Turn Packs — Subject: English
 
-## PACK: English (All Notes/Chats) [english] (1 URLs)
+## PACK: English (All) [english] (1 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/english-p1.md
 Read every URL above via URL context and answer my question with exact FILE citations.

@@ -1,9 +1,21 @@
-# 1-Turn Dynamic Packs (Grouped by Subject / Book)
+# 1-Turn Dynamic Packs (Grouped by Subject)
 # Packs > 20 parts automatically use a 1-URL Topic Index so they fit AI Studio's URL Context cap.
 
 # ========================================
-# SUBJECT: Books & Compendiums
+# SUBJECT: English
 # ========================================
+
+## PACK: English (All) [english] (1 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/english-p1.md
+Read every URL above via URL context and answer my question with exact FILE citations.
+
+# ========================================
+# SUBJECT: General Awareness
+# ========================================
+
+## PACK: General Awareness (All) [general-awareness] (27 Parts — Topic Index)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/general-awareness-index.md
+Read the Topic Index above via URL context and output ONLY the 1 to 8 most relevant Part URLs for my question.
 
 ## PACK: 1. RBI & Monetary Policy [ch01-rbi-monetary-policy] (2 URLs)
 https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch01-rbi-monetary-policy-p1.md
@@ -88,19 +100,24 @@ https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/ch18
 Read every URL above via URL context and answer my question with exact FILE citations.
 
 # ========================================
-# SUBJECT: English
+# SUBJECT: Miscellaneous
 # ========================================
 
-## PACK: English (All Notes/Chats) [english] (1 URLs)
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/english-p1.md
-Read every URL above via URL context and answer my question with exact FILE citations.
-
-# ========================================
-# SUBJECT: Study Chats
-# ========================================
-
-## PACK: Study Chats (Compact) [study-chats] (1 URLs)
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/study-chats-p1.md
+## PACK: Miscellaneous (All) [miscellaneous] (14 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p1.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p2.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p3.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p4.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p5.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p6.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p7.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p8.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p9.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p10.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p11.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p12.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p13.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p14.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
 ## PACK: Optimizing Two-Step LLM Routing [chat-optimizing-two-step-llm-routing] (14 URLs)

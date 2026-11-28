@@ -1,7 +1,20 @@
-# 1-Turn Packs — Subject: Study Chats
+# 1-Turn Packs — Subject: Miscellaneous
 
-## PACK: Study Chats (Compact) [study-chats] (1 URLs)
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/study-chats-p1.md
+## PACK: Miscellaneous (All) [miscellaneous] (14 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p1.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p2.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p3.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p4.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p5.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p6.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p7.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p8.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p9.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p10.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p11.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p12.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p13.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p14.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
 ## PACK: Optimizing Two-Step LLM Routing [chat-optimizing-two-step-llm-routing] (14 URLs)
