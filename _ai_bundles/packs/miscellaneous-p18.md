@@ -1,4 +1,4 @@
-# Cold Knowledge Bundle: chats-2026-11-part8
+# Subject Pack: miscellaneous (Part 18/24)
 
 
 ---

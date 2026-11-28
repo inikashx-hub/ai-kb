@@ -103,21 +103,21 @@ Read every URL above via URL context and answer my question with exact FILE cita
 # SUBJECT: Miscellaneous
 # ========================================
 
-## PACK: Miscellaneous (All) [miscellaneous] (14 URLs)
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p1.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p2.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p3.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p4.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p5.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p6.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p7.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p8.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p9.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p10.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p11.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p12.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p13.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-p14.md
+## PACK: Miscellaneous (All) [miscellaneous] (24 Parts — Topic Index)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/miscellaneous-index.md
+Read the Topic Index above via URL context and output ONLY the 1 to 8 most relevant Part URLs for my question.
+
+## PACK: Fixing GitHub Actions Workflow Errors [chat-fixing-github-actions-workflow-error] (10 URLs)
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-fixing-github-actions-workflow-error-p1.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-fixing-github-actions-workflow-error-p2.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-fixing-github-actions-workflow-error-p3.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-fixing-github-actions-workflow-error-p4.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-fixing-github-actions-workflow-error-p5.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-fixing-github-actions-workflow-error-p6.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-fixing-github-actions-workflow-error-p7.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-fixing-github-actions-workflow-error-p8.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-fixing-github-actions-workflow-error-p9.md
+https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/packs/chat-fixing-github-actions-workflow-error-p10.md
 Read every URL above via URL context and answer my question with exact FILE citations.
 
 ## PACK: Optimizing Two-Step LLM Routing [chat-optimizing-two-step-llm-routing] (14 URLs)

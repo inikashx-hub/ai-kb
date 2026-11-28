@@ -1,795 +1,628 @@
-# Subject Pack: miscellaneous (Part 12/14)
+# Subject Pack: miscellaneous (Part 12/24)
 
 
 ---
-## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 12/14]
+## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 2/14]
 
-const lock = LockService.getScriptLock();
-    lock.waitLock(30000);
-    try {
-      const pdfFolder = getOrCreateFolder_(CONFIG.PDF_FOLDER_NAME);
-      const props = PropertiesService.getScriptProperties();
-      const key = CONFIG.STATE_PREFIX + payload.sourceId;
+### Step 5: Connect Your 3 Static URLs to Google AI Studio
+1. Open Google AI Studio Playground, toggle **URL context** **ON**, and set **Temperature** to **`0.1`**.
+2. Paste these **3 static URLs** (replace `<USER>` and `<REPO>`) into **System Instructions**:
 
-      let prev = {};
-      const raw = props.getProperty(key);
-      if (raw) { try { prev = JSON.parse(raw); } catch (err) {} }
+```markdown
+You are a retrieval-grounded assistant for my knowledge base.
 
-      if (payload.mode === 'append' && typeof payload.expectedTc === 'number' &&
-          typeof prev.tc === 'number' && prev.tc !== payload.expectedTc) {
-        return jsonResponse_({ ok: false, error: 'Stale delta: expectedTc mismatch' });
-      }
+### Always-Loaded Tier 1 Sources + Tier 2 Index (Read via URL context)
+- Tier 1 Core: https://raw.githubusercontent.com/<USER>/<REPO>/main/_ai_bundles/hot-core.md
+- Tier 1 Recent: https://raw.githubusercontent.com/<USER>/<REPO>/main/_ai_bundles/hot-recent.md
+- Tier 2 Index: https://raw.githubusercontent.com/<USER>/<REPO>/main/_ai_bundles/llms.txt
 
-      if (prev.p && payload.mode !== 'new_part') {
-        try {
-          const old = DriveApp.getFileById(prev.p);
-          if (!old.isTrashed()) old.setTrashed(true);
-        } catch (err) {}
-      }
-      const dupes = pdfFolder.getFilesByName(payload.pdfName);
-      while (dupes.hasNext()) {
-        const df = dupes.next();
-        if (!df.isTrashed()) df.setTrashed(true);
-      }
+### Rules
+1. First check Tier 1 Core and Tier 1 Recent. If they fully answer the user's question, answer immediately in this turn and cite the exact `FILE:` path.
+2. If the question requires files listed in `llms.txt` that are NOT in Tier 1:
+   - Do NOT guess or answer from `llms.txt` summaries alone.
+   - Pick the 1 to 4 most relevant Cold Bundle URLs from `llms.txt`.
+   - Output a 1-line note explaining why, followed by a SINGLE `text` code block containing ONLY the raw `https://...` URLs (one per line) and this final line inside the block:
+     `Read every URL above via URL context and answer my previous question with exact FILE citations.`
+3. Once provided in the next turn, read the Cold Bundles completely before answering.
+```
 
-      const bytes = Utilities.base64Decode(payload.pdfB64);
-      const blob = Utilities.newBlob(bytes, 'application/pdf', payload.pdfName);
-      const created = pdfFolder.createFile(blob);
+3. **Save the prompt** in Google AI Studio. From now on, just push edits to `kb/` on GitHub—your AI Studio chat stays permanently synced. *(Note: After a push, `raw.githubusercontent.com` can take ~1–5 minutes to refresh `llms.txt` and Tier 1 links on `/main/`, though once `llms.txt` updates, the hashed Tier 2 Cold URLs load fresh immediately.)*
 
-      prev.p = created.getId();
-      prev.pt = payload.updatedMs;
-      if (typeof payload.nextTc === 'number') prev.tc = payload.nextTc;
-      if (payload.nextTh) prev.th = payload.nextTh;
-      prev.part = payload.part || 1;
-      prev.partStartTc = payload.partStartTc || 0;
-      delete prev.qa;
-      props.setProperty(key, JSON.stringify(prev));
+---
 
-      return jsonResponse_({ ok: true, pdfId: created.getId() });
-    } finally {
-      lock.releaseLock();
+## User
+
+Help me to fill the blanks to create repository
+
+---
+
+## Model
+
+Here is exactly how to fill out each field on those two screens:
+
+### Screen 1 (General)
+* **Owner:** Leave as `inikashx-hub`
+* **Repository name:** Type `ai-kb` *(short, lowercase, no spaces—you can also use `my-ai-kb` or any name you like)*
+* **Description:** *(Optional)* `Knowledge base for Google AI Studio RAG`
+
+### Screen 2 (Configuration)
+* **Choose visibility:** Keep it on **Public** *(required so Google AI Studio’s URL Context can read it)*
+* **Add README:** Toggle **ON** *(important on mobile—this automatically creates your `main` branch right away so you can start adding files immediately)*
+* **Add .gitignore:** Leave as **No .gitignore**
+* **Add license:** Leave as **No license**
+
+Tap the green **Create repository** button.
+
+---
+
+### Quick Tip for Adding Folders on Mobile (Next Screen)
+GitHub doesn't have a separate "New Folder" button in the browser. Once your repo opens:
+1. Tap **Add file** → **Create new file**.
+2. In the **Name your file...** box, typing a `/` automatically creates folders:
+   * Type `kb/core/overview.md` → paste a sample note → tap **Commit changes...**
+   * Repeat to create `scripts/build_kb.py` → paste the Python script → commit.
+   * Repeat to create `.github/workflows/build-kb.yml` → paste the workflow YAML → commit.
+
+*(Note: If you name your repo `ai-kb`, your 3 Google AI Studio System Instruction URLs will be under `inikashx-hub/ai-kb`!)*
+
+---
+
+## User
+
+Should I create separate folder for .txt and .md files?
+
+---
+
+## Model
+
+**No—do not separate folders by file type.** Group your folders by **topic or subject** instead (and mix `.md` and `.txt` freely inside them).
+
+### Why?
+Our `build_kb.py` script already supports both `.md` and `.txt` (plus `.json`, `.csv`, `.py`, etc.) automatically, and it creates **Tier 2 Cold Bundles based on your folder names**:
+* If you make `kb/txt/` and `kb/md/`, your bundles get split awkwardly by file extension (`cold-txt.md` vs. `cold-md.md`), scattering related info across different files.
+* If you make topic folders like `kb/core/`, `kb/work/`, `kb/study/`, or `kb/coding/`, all `.txt` and `.md` files on the same subject get bundled together—so Gemini gets the full picture in a single fetch.
+
+### One Quick Tip for `.txt` Files
+Since `llms.txt` extracts Markdown `#` headings to figure out which bundle to fetch, plain `.txt` files without headings have slightly fewer routing clues. To keep accuracy high:
+1. **Give `.txt` files descriptive filenames** (e.g., `kb/finance/tax-rules-2026.txt` instead of `notes1.txt`)—filenames are always included in `llms.txt`.
+2. **Use `.md` for new notes** whenever possible, since `#` headings help Gemini navigate long bundles faster.
+
+---
+
+## User
+
+I meant the code that you have given in the previous chats for creating new files in repository
+
+---
+
+## Model
+
+Got it! Here is the exact breakdown of **only the files you need to create manually** from the previous guide—and where each one goes:
+
+### 1. The 2 Code Files (Exact Paths Required)
+Keep these **outside** `kb/`, in their exact folders:
+* **`scripts/build_kb.py`** → The Python builder script.
+* **`.github/workflows/build-kb.yml`** → The GitHub Action workflow.
+
+*(GitHub Actions only detects workflows inside `.github/workflows/`, and that workflow specifically runs `scripts/build_kb.py`, so those folder names must match exactly.)*
+
+---
+
+### 2. Your Knowledge Files (`.md` and `.txt`)
+Put all your notes/docs inside **`kb/`**:
+* **`kb/core/...`** → Anything here (whether `.md` or `.txt`) goes into Tier 1 (`hot-core.md`).
+* **`kb/<any-topic>/...`** → Anything here (`.md` or `.txt` mixed together) becomes Tier 2 Cold Bundles.
+
+*(You do **not** need to make separate `.txt` and `.md` folders.)*
+
+---
+
+### 3. Do NOT Create `_ai_bundles/` Manually!
+You might have seen **`llms.txt`** (`.txt`) and **`hot-core.md`** / **`hot-recent.md`** (`.md`) in the folder diagram earlier. **Do not create those files or the `_ai_bundles/` folder yourself.**
+
+Once you commit:
+1. `scripts/build_kb.py`
+2. `.github/workflows/build-kb.yml`
+3. At least one starter file inside `kb/` (e.g., `kb/core/overview.md`)
+
+…GitHub Actions will run automatically and generate **`_ai_bundles/llms.txt`**, **`hot-core.md`**, **`hot-recent.md`**, and **`cold/`** for you!
+
+---
+
+## User
+
+Can I upload python script by creating new file now?
+
+---
+
+## Model
+
+**Almost—just step out of `.github/workflows/` first!**
+
+Right now your screen shows you are inside **`ai-kb / .github / workflows /`**. If you create a new file from here, GitHub will put it inside the `workflows` folder by mistake.
+
+### Do This Instead:
+1. **Go back to the repo root:** Tap **`ai-kb`** in the blue path (`ai-kb / .github / workflows /`).
+2. **Create the script:** Once you are at the main `ai-kb` page, tap **`Add file`** (or **`+`**) → **Create new file**.
+3. **Name & commit:** Type `scripts/build_kb.py`, paste the Python code, and tap **Commit changes...**.
+
+---
+
+### Quick Heads-Up Before You Commit
+If you haven't created any file inside `kb/` yet:
+* Creating `scripts/build_kb.py` will trigger the GitHub Action right away, and it will fail once with `"Missing 'kb/' directory"`—totally harmless, and it will turn green as soon as you add your first file in `kb/`.
+* **Pro tip:** If you want a green ✅ on the very first run, create `kb/core/overview.md` (with any short starter text) *first*, and then create `scripts/build_kb.py` right after!
+
+---
+
+## User
+
+I have my knowledge base files in Google drive
+
+---
+
+## Model
+
+thought Awesome! Look at those fresh 2026 facts:
+- Google Docs natively supports **File → Download → Markdown (.md)** AND (as of Oct 2026!) Google Drive / Docs natively opens and edits `.md` files directly in Markdown Mode without converting them!
+- In Google AI Studio, you *can* attach files from Google Drive manually per prompt—**however**, that's static attachment per chat (not dynamic RAG across dozens of folders, and doesn't auto-sync when files are edited after attaching).
+
+Now let's give the user **3 practical paths** from Google Drive into `inikashx-hub/ai-kb/kb/`, tailored to how often their files change and what file formats they have (Google Docs, `.md`/`.txt`, or `.pdf`/`.docx`):
+
+1. **Quickest Option (Manual Upload from Android/Desktop — 2 Minutes, Zero Extra Setup):**
+   - **If your Drive files are `.md` or `.txt`:**
+     - Go to `inikashx-hub/ai-kb` → navigate into `kb/core/` (or create `kb/<topic>/` with a tiny placeholder file first so the folder exists) → tap **Add file → Upload files**.
+     - On Android, when the file picker opens, tap the top-left menu (`≡`) and select **Google Drive** directly (or download them to your phone first) and upload multiple files at once!
+   - **If your files are Google Docs:**
+     - Open the Google Doc (in browser / desktop mode) → **File → Download → Markdown (`.md`)** (or Plain Text `.txt`) → upload to `kb/`.
+   - **If your files are PDFs or `.docx`:**
+     - Tell them honestly: right now `build_kb.py` only merges text formats (`.md`, `.txt`, `.csv`, `.json`), so it skips `.pdf`/`.docx`. *Offer:* "If your Drive is mostly PDFs or `.docx`, let me know and I can give you a 5-line update to `build-kb.yml` and `build_kb.py` that automatically extracts text from PDFs/Word docs inside GitHub Actions!"
+
+2. **Automatic Sync Option (Google Apps Script — Free, Runs Inside Google Drive, No PC Required!):**
+   - If they **actively edit** their knowledge base in Google Drive and want Drive changes to auto-push into `inikashx-hub/ai-kb/kb/` every hour or day:
+   - Explain the **Google Apps Script** bridge (without dumping a massive wall of code unless they want it, OR give a concise working overview and offer the copy-paste script!):
+     - Create a script at `script.google.com`.
+     - Give it a folder ID from Google Drive + a GitHub Personal Access Token (fine-grained PAT with `Contents: Read & Write` scoped *only* to `inikashx-hub/ai-kb`).
+     - It automatically converts Google Docs → Markdown/Text (`Drive.Files.export` / `DocumentApp`), reads `.md`/`.txt` files, preserves subfolders under `kb/`, and pushes updates via GitHub's Contents API on a schedule (e.g., every hour or on manual click).
+     - GitHub Actions then automatically rebuilds `hot-core.md`, `hot-recent.md`, `cold/`, and `llms.txt`!
+   - *(Wait: Let's offer to write the exact Google Apps Script for them if they want automatic sync, AND ask what file types are in their Drive—Google Docs, PDFs, `.docx`, or `.md`/`.txt`—so we don't overwhelm them with code they might not need if manual upload or PDF extraction is what they actually want!)*
+
+3. **Wait—Also Note the Native AI Studio Drive Button (and Why GitHub Hybrid Still Wins):**
+   - Mention briefly: Google AI Studio also has a built-in **Google Drive** attach option (`+` → **Drive**), which is great for quick one-off chats on 1–3 files, **but** it doesn't scale like RAG (you have to manually pick/re-attach files for new chats, and it can hit context limits fast if you attach an entire Drive folder). Keeping Drive synced into `ai-kb` gives you the true 2-tier RAG index (`llms.txt` + Hot/Cold bundles).
+
+Let's keep the response super structured, helpful, and focused on their next move! Ask one simple clarifying question at the end (*"What file types are mostly in your Google Drive—Google Docs, PDFs/Word files, or `.txt`/`.md`—and do you edit them daily or mostly keep them static?"*) so we can give them the exact snippet they need next (whether it's PDF/DOCX extraction in `build_kb.py` or the Google Apps Script auto-syncer).You have two clean ways to bridge **Google Drive → GitHub (`ai-kb/kb/`)**, depending on whether your Drive files are mostly static or edited regularly—plus one important check on file types.
+
+---
+
+### First: Check Your File Types in Google Drive
+Right now, `build_kb.py` only bundles **plain-text formats** (`.md`, `.txt`, `.csv`, `.json`, `.yaml`, code files).
+* **Google Docs:** Need to be exported as **Markdown (`.md`)** or **Plain Text (`.txt`)** (`File → Download → Markdown (.md)` in Google Docs).
+* **`.md` / `.txt` files:** Ready to go as-is! *(Note: Google Drive also supports opening and editing `.md` files directly inside Google Docs now without converting them.)*
+* **PDFs / Word (`.docx`):** Currently skipped by `build_kb.py`—*though we can easily add a 5-line PDF/Word text extractor to your GitHub Action if you have lots of PDFs.*
+
+---
+
+### Option 1: Quick Manual Upload (Best if Files Don't Change Daily)
+You can upload directly from your phone without any extra scripts:
+1. In your `ai-kb` repo on GitHub, create at least one starter file inside each folder you want (e.g., `kb/core/readme.md`, `kb/notes/readme.md`) so the folders exist.
+2. Open that folder → tap **Add file** → **Upload files**.
+3. When Android's file picker opens, tap the **menu (`≡`)** on the left and pick **Google Drive** directly (or download the files first) to batch-upload multiple `.md` / `.txt` files in one commit.
+
+---
+
+### Option 2: Auto-Sync Google Drive → GitHub (Best if You Edit in Drive Often)
+If you want changes in a Google Drive folder to **automatically sync** to `inikashx-hub/ai-kb/kb/` (without touching GitHub manually):
+* Use **Google Apps Script** (`script.google.com`)—it is 100% free, runs directly on Google's servers, and needs no PC.
+* A short Apps Script can:
+  1. Scan a specific Google Drive folder (and its subfolders).
+  2. Automatically convert **Google Docs → Markdown/Text** (and read `.md`/`.txt` files).
+  3. Push only changed files into `kb/` on GitHub using a fine-grained GitHub Token on an hourly or daily timer.
+  4. Your existing GitHub Action (`build-kb.yml`) then automatically rebuilds `hot-core.md`, `hot-recent.md`, `cold/`, and `llms.txt`.
+
+*(Tip: Google AI Studio also has a built-in **Drive** button (`+` → Drive) to attach individual files per chat, which works well for 1–3 files—but it doesn't give you automatic multi-folder indexing or Tier 1/Tier 2 RAG scaling like GitHub does.)*
+
+---
+
+### Which Fits Your Drive Best?
+Tell me two quick things and I'll give you the exact next step:
+1. **What file types are in your Google Drive?** (Google Docs, `.md`/`.txt`, or PDFs/Word `.docx`?)
+2. **Do you update those files frequently**, or is a one-time upload + occasional additions enough?
+
+---
+
+## User
+
+I already have a private repository in GitHub that gets jobs from Google apps script with 15 minutes trigger to convert Google AI Studio chats into .md and .pdf files and save them in Google drive dynamically. My knowledge base is mostly Google AI Studio chats
+
+---
+
+## Model
+
+That actually puts you **90% ahead of the game**—your pipeline is already converting messy AI Studio chats into clean `.md` files automatically!
+
+Before connecting the two, there is **one critical privacy decision** you need to make first, because it determines which path you should take.
+
+---
+
+### First: The Privacy Fork (Public vs. Private)
+Because `inikashx-hub/ai-kb` is **Public** (required for Google AI Studio’s **URL Context** toggle), **anyone on the internet can read files pushed to `ai-kb`**.
+
+* **Path A (Chats are non-sensitive / filtered):** You can auto-push your `.md` chat exports from your private repo into `ai-kb/kb/` and get full hands-free **URL Context** RAG.
+* **Path B (Chats contain private/personal/work data):** **Do NOT push them to `ai-kb`.** Instead, run `build_kb.py` *inside your existing private repo*, have it save `hot-recent.md` + `llms.txt` + `cold/*.md` straight into a dedicated **`AI-KB-Bundles/` folder in your Google Drive**, and attach them in AI Studio using the built-in **`+` → Google Drive** button when starting a chat. *(Zero public exposure, though you attach the updated bundle files manually per new chat instead of via URL Context.)*
+
+---
+
+### If You Go with Path A: Connecting Your Existing Pipeline to `ai-kb`
+You don't need to touch your Google Apps Script at all. Your **private repo's GitHub Action** already receives the chats and builds the `.md` files—so just let it drop a copy of the `.md` files (ignore the `.pdf`s, since `.md` is cleaner and lighter) into `ai-kb`:
+
+1. Create a **Fine-grained Personal Access Token (PAT)** on GitHub scoped **only** to `inikashx-hub/ai-kb` with **Contents: Read and write** permission.
+2. Add that token as a Secret (e.g., `AI_KB_TOKEN`) in your **private** repo’s Settings.
+3. Add a final step at the end of your private repo’s workflow that clones `inikashx-hub/ai-kb`, copies only the new/updated `.md` files into `kb/chats/YYYY-MM/` (or only chats tagged `#kb` / non-private if you want selective sync), and pushes.
+4. `ai-kb`'s `build-kb.yml` will automatically trigger, update `hot-recent.md` (last 14 days of chats), shard older chats into `cold/`, and rebuild `llms.txt`.
+
+---
+
+### 3 Optimizations Specifically for AI Studio Chat Logs
+Because your knowledge base is **chat transcripts** rather than handwritten docs, tweaking `build_kb.py` for chats will dramatically improve retrieval accuracy:
+
+1. **Index "User Prompts" Instead of Random `#` Headings:**
+   AI responses inside chat `.md` files are full of generic headings like `## Step 1` or `## Summary`, which add noise to `llms.txt`. Instead, extract the **chat title + the first 3–5 User messages** into `llms.txt`—those capture the exact questions/problems you solved in that chat!
+2. **Auto-Group Cold Bundles by Month (`YYYY-MM`) or Topic Keywords:**
+   Since chats arrive dynamically without manual folder sorting, saving them as `kb/2026-11/<chat-title>.md`, `kb/2026-10/<chat-title>.md` (or auto-routing by keyword like `python`, `finance`, `prompts`) automatically gives `build_kb.py` clean Cold Bundles (`cold-2026-11.<hash>.md`) with zero manual organizing.
+3. **Strip Redundant Noise Before Bundling:**
+   If your `.md` exporter includes long base64 strings, system boilerplate, or thinking traces, strip them before writing to `kb/` so your `hot-recent.md` and Cold Bundles stay compact and token-efficient.
+
+---
+
+Do you want to keep everything **100% private via Drive Bundles (Path B)**, or are your exported chats safe for **cross-repo push to `ai-kb` (Path A)**—and how are user vs. model turns formatted inside your exported `.md` files? If you share a quick snippet of one exported `.md` header, I can tailor `build_kb.py` to extract your exact chat titles and prompts cleanly.Looking at your `.md` format, this is actually **ideal** for the Tiered Hybrid setup—and sharing this sample just saved you from **two hidden bugs** that the generic `build_kb.py` would have hit:
+
+1. **Heading Pollution:** Your chat exports use `## User` and `## Model` as level-2 headings, while the real topics live in **`# Title`**, the **User questions**, and **`###` subheadings**. The generic script would have put `User, Model, User, Model` into `llms.txt`.
+2. **Bulk-Import `hot-recent.md` Bloat:** If you import 50 older chats from September/October into `ai-kb` today, `git log` would think all 50 were "edited today" and dump everything into `hot-recent.md`. Instead, we can read your **`**Updated:** YYYY-MM-DD`** timestamp directly!
+
+*(Also, since your sample is SBI Clerk Mains math shortcuts with no sensitive personal data, **Path A**—cross-pushing non-private `.md` chats into `inikashx-hub/ai-kb`—is a great fit.)*
+
+---
+
+### Updated `scripts/build_kb.py` (Tailored to Your AI Studio Chat Format)
+
+Replace the contents of **`scripts/build_kb.py`** with this version. It automatically:
+* Parses **`# Title`** and **`**Updated:** YYYY-MM-DD`** for accurate 14-day recency detection.
+* Extracts your **`## User` prompts** and **`###` section titles** (ignoring `User`/`Model` labels) into `llms.txt` for sharp semantic routing.
+* Auto-groups flat chat dumps under `kb/chats/` by **Month (`YYYY-MM`)** if you don't sort them into topic folders, or by **folder name** if you organize them (e.g., `kb/quant/`, `kb/reasoning/`).
+
+```python
+import hashlib
+import os
+import re
+import shutil
+import subprocess
+from datetime import date, datetime
+from pathlib import Path
+
+KB_DIR = Path("kb")
+OUT_DIR = Path("_ai_bundles")
+COLD_DIR = OUT_DIR / "cold"
+
+ALLOWED_EXTS = {".md", ".txt", ".json", ".yaml", ".yml", ".csv", ".py", ".ts", ".js"}
+MAX_COLD_BYTES = 180_000  # ~45k tokens max per Cold Bundle
+RECENT_DAYS = 14
+
+REPO = os.environ.get("GITHUB_REPOSITORY", "inikashx-hub/ai-kb")
+BRANCH = os.environ.get("GITHUB_REF_NAME", "main")
+RAW_BASE = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}"
+TODAY = date.today()
+
+def get_git_recent_files(days: int) -> set[Path]:
+    try:
+        out = subprocess.check_output(
+            ["git", "log", f"--since={days} days ago", "--name-only", "--pretty=format:", "--", str(KB_DIR)],
+            text=True,
+        )
+        return {Path(line.strip()) for line in out.splitlines() if line.strip()}
+    except Exception:
+        return set()
+
+def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
+    if not match:
+        return {}, text
+    meta = {}
+    for line in match.group(1).splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            meta[k.strip().lower()] = v.strip()
+    return meta, text[match.end() :]
+
+def clean_chat_wrapper(text: str) -> str:
+    return re.sub(r"^---\s*START OF FILE.*?---\s*\n+", "", text, flags=re.MULTILINE).strip()
+
+def extract_chat_info(path: Path, body: str) -> dict:
+    # 1. Title from H1 or filename
+    h1_match = re.search(r"^#\s+(.+)$", body, re.MULTILINE)
+    title = h1_match.group(1).strip() if h1_match else path.stem
+
+    # 2. Updated date from "> **Model:** ... | **Updated:** YYYY-MM-DD ..."
+    updated_date = None
+    upd_match = re.search(r"\*\*Updated:\*\*\s*(\d{4}-\d{2}-\d{2})", body)
+    if upd_match:
+        try:
+            updated_date = datetime.strptime(upd_match.group(1), "%Y-%m-%d").date()
+        except ValueError:
+            updated_date = None
+
+    # 3. User prompts (the actual questions asked in the chat)
+    raw_prompts = re.findall(
+        r"^##\s+User\s*\n+(.*?)(?=\n+---|\n+##\s+Model|\Z)",
+        body,
+        re.DOTALL | re.MULTILINE,
+    )
+    prompts = []
+    for p in raw_prompts[:4]:
+        compact = " ".join(p.split())
+        if compact:
+            prompts.append(compact[:110] + ("..." if len(compact) > 110 else ""))
+
+    # 4. H3 subheadings (skipping generic labels)
+    h3s = re.findall(r"^###\s+(.+)$", body, re.MULTILINE)
+    skip = {"conclusion", "summary", "summary checklist before applying:"}
+    sections = [h.strip() for h in h3s if h.strip().lower() not in skip][:8]
+
+    return {
+        "title": title,
+        "updated_date": updated_date,
+        "prompts": prompts,
+        "sections": sections,
     }
-  } catch (err) {
-    return jsonResponse_({ ok: false, error: err.message });
-  }
-}
 
-function jsonResponse_(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
-}
+def format_file_block(rel_path: Path, body: str) -> str:
+    return f"\n\n---\n## FILE: `{rel_path.as_posix()}`\n\n{body}\n"
 
-function pushJobToGitHub_(path, obj, token) {
-  const url = `https://api.github.com/repos/${CONFIG.GITHUB_OWNER}/${CONFIG.GITHUB_REPO}/contents/${path}`;
-  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
+def write_cold_chunks(group_name: str, items: list[dict]) -> list[dict]:
+    chunks = []
+    current_blocks, current_meta, current_size = [], [], 0
 
-  let sha = null;
-  const getResp = UrlFetchApp.fetch(url, { method: 'get', headers, muteHttpExceptions: true });
-  if (getResp.getResponseCode() === 200) {
-    try { sha = JSON.parse(getResp.getContentText()).sha; } catch (e) {}
-  }
+    for item in items:
+        block = format_file_block(item["path"], item["body"])
+        block_size = len(block.encode("utf-8"))
+        if current_blocks and (current_size + block_size > MAX_COLD_BYTES):
+            chunks.append((current_blocks, current_meta))
+            current_blocks, current_meta, current_size = [], [], 0
+        current_blocks.append(block)
+        current_meta.append(item)
+        current_size += block_size
 
-  const body = {
-    message: `Queue ${path}`,
-    content: Utilities.base64Encode(JSON.stringify(obj), Utilities.Charset.UTF_8),
-    branch: CONFIG.GITHUB_BRANCH
-  };
-  if (sha) body.sha = sha;
+    if current_blocks:
+        chunks.append((current_blocks, current_meta))
 
-  const putResp = UrlFetchApp.fetch(url, {
-    method: 'put', contentType: 'application/json', headers,
-    payload: JSON.stringify(body), muteHttpExceptions: true
-  });
-  const code = putResp.getResponseCode();
-  if (code !== 200 && code !== 201) {
-    console.error(`GitHub PUT failed (${code}): ${putResp.getContentText()}`);
-    return false;
-  }
-  return true;
-}
+    written = []
+    for idx, (blocks, metas) in enumerate(chunks, start=1):
+        suffix = f"-part{idx}" if len(chunks) > 1 else ""
+        content = f"# Cold Knowledge Bundle: {group_name}{suffix}\n" + "".join(blocks)
+        short_hash = hashlib.md5(content.encode("utf-8")).hexdigest()[:8]
+        filename = f"cold-{group_name}{suffix}.{short_hash}.md"
+        (COLD_DIR / filename).write_text(content, encoding="utf-8")
 
-function triggerGitHubWorkflow_(token) {
-  const url = `https://api.github.com/repos/${CONFIG.GITHUB_OWNER}/${CONFIG.GITHUB_REPO}/actions/workflows/build-pdfs.yml/dispatches`;
-  const resp = UrlFetchApp.fetch(url, {
-    method: 'post', contentType: 'application/json',
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
-    payload: JSON.stringify({ ref: CONFIG.GITHUB_BRANCH }), muteHttpExceptions: true
-  });
-  const code = resp.getResponseCode();
-  if (code !== 204 && code !== 200) {
-    console.error(`GitHub workflow trigger failed (${code}): ${resp.getContentText()}`);
-  }
-}
+        titles, prompts, sections, summaries, keywords = [], [], [], [], []
+        for m in metas:
+            d = m["updated_date"].isoformat() if m["updated_date"] else ""
+            titles.append(f"{m['title']} ({d})" if d else m["title"])
+            prompts.extend(m["prompts"])
+            sections.extend(m["sections"])
+            if m["summary"]:
+                summaries.append(m["summary"])
+            if m["keywords"]:
+                keywords.append(m["keywords"])
 
-/* ===== Text Cleaning & Extraction ===== */
+        written.append(
+            {
+                "url": f"{RAW_BASE}/_ai_bundles/cold/{filename}",
+                "group": f"{group_name}{suffix}",
+                "titles": titles,
+                "prompts": prompts[:12],
+                "sections": sections[:15],
+                "summaries": summaries,
+                "keywords": keywords,
+            }
+        )
+    return written
 
-function joinStreamText_(a, b) {
-  if (!a) return b || '';
-  if (!b) return a;
-  if (/\s$/.test(a) || /^\s/.test(b)) return a + b;
-  if (/^[,.;:!?)}\]'"*]/.test(b) || /[(\[{\"'*-]$/.test(a)) return a + b;
-  return a + ' ' + b;
-}
+def main():
+    if not KB_DIR.exists():
+        raise SystemExit("Missing 'kb/' directory.")
 
-function cleanTextArtifacts_(raw) {
-  let text = String(raw || '').replace(/\r\n/g, '\n').replace(/\f/g, '\n');
-  if (((text.match(/^[ \t]*```/gm) || []).length % 2) === 1) text += '\n```';
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(COLD_DIR, ignore_errors=True)
+    COLD_DIR.mkdir(parents=True, exist_ok=True)
 
-  const code = [];
-  text = text.replace(/```[\s\S]*?```|`[^`\n]+`/g, m => {
-    const tok = `\u0000CD_${code.length}\u0000`;
-    code.push(m);
-    return tok;
-  });
+    git_recent = get_git_recent_files(RECENT_DAYS)
+    hot_core_blocks = []
+    hot_recent_blocks = []
+    cold_groups: dict[str, list[dict]] = {}
 
-  const math = [];
-  const stashMath = m => {
-    const tok = `\u0000MT_${math.length}\u0000`;
-    math.push(m);
-    return tok;
-  };
-  text = text
-    .replace(/(?<!\\)\$\$[\s\S]+?(?<!\\)\$\$/g, stashMath)
-    .replace(/(?<!\\)\$(?!\s)(?:\\\$|[^$\n])+?(?<!\s)(?<!\\)\$(?!\d)/g, stashMath);
+    for path in sorted(KB_DIR.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in ALLOWED_EXTS:
+            continue
 
-  text = text
-    .replace(/!?\[([^\]]*)\]\((?:https?:\/\/|mailto:)[^)\s]+\)/gi, '$1')
-    .replace(/<(?:https?:\/\/|mailto:)[^>\s]+>/gi, '')
-    .replace(/\b(?:https?:\/\/|mailto:)[^\s)\]>"]+/gi, '')
-    .replace(/【[^】]*】/g, '')
-    .replace(/\[(?:cite_start|cite_end|cite:[^\]]*|source|citation needed)\]/gi, '')
-    .replace(/\[(?:\d+(?:\s*[-–,]\s*\d+)*)\]/g, '')
-    .replace(/\(\s*\)/g, '')
-    .replace(/\*\*([^\n*]+?)\*\*/g, (_, inner) => {
-      const lead = (/^\s+/.exec(inner) || [''])[0], trail = (/\s+$/.exec(inner) || [''])[0], core = inner.trim();
-      return core ? `${lead}**${core}**${trail}` : '';
-    })
-    .replace(/([.!?,:;])[ \t]+\*(?=[.,;:!?)]|$)/g, '$1*')
-    .replace(/([A-Za-z0-9.!?,:;])[ \t]+\*(?=[.,;:!?)]|$)/g, '$1*')
-    .replace(/^[ \t]*(?:[-=]{2,}[ \t]*)?Page[ \t]+\d+(?:[ \t]+of[ \t]+\d+)?(?:[ \t]*[-=]{2,})?[ \t]*$/gim, '')
-    .replace(/([A-Za-z]{2,})-\n([A-Za-z]{2,})/g, '$1$2');
+        raw_text = path.read_text(encoding="utf-8", errors="ignore")
+        meta, body = parse_frontmatter(raw_text)
+        body = clean_chat_wrapper(body)
+        info = extract_chat_info(path, body)
 
-  const lines = text.split('\n'), out = [];
-  let tbl = [];
-  const isSep = l => l.includes('|') && /^\|?\s*:?[-–—]{1,}:?\s*(\|\s*:?[-–—]{1,}:?\s*)+\|?$/.test(l.trim());
-  const isStruct = l => {
-    const t = l.trim();
-    return !t || /^#{1,6}\s/.test(t) || /^[-*+]\s/.test(t) || /^\d+[.)]\s/.test(t) ||
-           /^>\s?/.test(t) || /^(-{3,}|\*{3,}|_{3,})$/.test(t) || /^\u0000(?:CD|MT)_\d+\u0000$/.test(t);
-  };
-  const flushTbl = () => {
-    if (!tbl.length) return;
-    if (out.length && out[out.length - 1].trim() !== '') out.push('');
-    const splitR = r => r.replace(/^\|/, '').replace(/(^|[^\\])\|$/, '$1').replace(/\\\|/g, '\u0000P\u0000')
-      .split('|').map(c => c.replace(/\u0000P\u0000/g, '|').trim());
-    const parsed = tbl.map(splitR);
-    const cols = Math.max(...parsed.map(r => r.length));
-    tbl.forEach((rawRow, idx) => {
-      const cells = parsed[idx].slice(0, cols);
-      while (cells.length < cols) cells.push('');
-      if (isSep(rawRow)) {
-        out.push('| ' + cells.map(c => (c.startsWith(':') && c.endsWith(':')) ? ':---:' : (c.startsWith(':') ? ':---' : (c.endsWith(':') ? '---:' : '---'))).join(' | ') + ' |');
-      } else {
-        out.push('| ' + cells.map(c => c.replace(/\|/g, '\\|')).join(' | ') + ' |');
-      }
-    });
-    out.push('');
-    tbl = [];
-  };
+        rel_from_kb = path.relative_to(KB_DIR)
+        top_folder = rel_from_kb.parts[0] if len(rel_from_kb.parts) > 1 else "general"
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i], t = line.trim();
-    const isTbl = /^\|.*\|$/.test(t) || (t.includes('|') && (tbl.length > 0 || (i + 1 < lines.length && isSep(lines[i + 1]))));
-    if (isTbl) { tbl.push(t); continue; }
-    flushTbl();
-    if (out.length && !isStruct(line) && !isStruct(out[out.length - 1]) && !/  $/.test(out[out.length - 1])) {
-      out[out.length - 1] = out[out.length - 1].replace(/\s+$/, '') + ' ' + t;
-    } else {
-      out.push(line);
-    }
-  }
-  flushTbl();
+        is_hot = (top_folder == "core") or (meta.get("tier") == "hot")
+        block = format_file_block(path, body)
 
-  return out.join('\n')
-    .replace(/(\S) {2,}/g, '$1 ')
-    .replace(/\u0000MT_(\d+)\u0000/g, (_, i) => math[Number(i)])
-    .replace(/\u0000CD_(\d+)\u0000/g, (_, i) => code[Number(i)])
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
+        if is_hot:
+            hot_core_blocks.append(block)
+        else:
+            # Prefer chat's **Updated:** date if present; otherwise fall back to git log
+            if info["updated_date"] is not None:
+                is_recent = (TODAY - info["updated_date"]).days <= RECENT_DAYS
+            else:
+                is_recent = path in git_recent
 
-function extractCleanChat_(data, file) {
-  const title = file.getName().replace(/\.(json|prompt|txt)$/i, '') || 'Untitled prompt';
-  const model = data.runSettings?.model ? String(data.runSettings.model).replace(/^models\//, '') : 'unknown';
-  const updatedIso = file.getLastUpdated().toISOString();
-  const rawSys = data.systemInstruction
-    ? (typeof data.systemInstruction === 'string'
-        ? data.systemInstruction
-        : (data.systemInstruction.text || (data.systemInstruction.parts || []).map(p => p.text || '').join('')))
-    : '';
-  const systemInstruction = rawSys ? cleanTextArtifacts_(rawSys) : '';
+            if is_recent:
+                hot_recent_blocks.append(block)
 
-  const rawTurns = [];
-  const appendItem = (role, item, joiner) => {
-    const lastTurn = rawTurns[rawTurns.length - 1];
-    if (lastTurn && lastTurn.role === role) {
-      const lastItem = lastTurn.items[lastTurn.items.length - 1];
-      if (lastItem && lastItem.type === item.type && (item.type === 'text' || item.type === 'thought')) {
-        lastItem.text = joiner(lastItem.text, item.text);
-        return;
-      }
-      lastTurn.items.push(item);
-    } else {
-      rawTurns.push({ role, items: [item] });
-    }
-  };
+            # If dumped flat into kb/chats/, auto-shard by month (YYYY-MM)
+            group_key = top_folder
+            if top_folder == "chats" and info["updated_date"] is not None:
+                group_key = f"chats-{info['updated_date'].strftime('%Y-%m')}"
 
-  const extractRawParts = (role, parts) => {
-    for (const p of (parts || [])) {
-      if (!p) continue;
-      const th = Boolean(p.thought || p.isThought);
-      if (th && !CONFIG.INCLUDE_THOUGHTS) continue;
-      if (p.text) appendItem(role, { type: th ? 'thought' : 'text', text: String(p.text) }, (a, b) => a + b);
-      else if (p.inlineData?.data && String(p.inlineData.mimeType || '').startsWith('image/')) {
-        appendItem(role, { type: 'image_b64', mimeType: p.inlineData.mimeType, data: p.inlineData.data }, null);
-      } else if (p.executableCode?.code) {
-        appendItem(role, { type: 'text', text: `\n\`\`\`${(p.executableCode.language || 'python').toLowerCase()}\n${p.executableCode.code}\n\`\`\`\n` }, joinStreamText_);
-      } else if (p.codeExecutionResult?.output) {
-        appendItem(role, { type: 'text', text: `\n**Execution Output:**\n\`\`\`text\n${p.codeExecutionResult.output}\n\`\`\`\n` }, joinStreamText_);
-      }
-    }
-  };
+            cold_groups.setdefault(group_key, []).append(
+                {
+                    "path": path,
+                    "body": body,
+                    "title": info["title"],
+                    "updated_date": info["updated_date"],
+                    "prompts": info["prompts"],
+                    "sections": info["sections"],
+                    "summary": meta.get("summary", ""),
+                    "keywords": meta.get("keywords", ""),
+                }
+            )
 
-  if (Array.isArray(data.chunkedPrompt?.chunks)) {
-    for (const c of data.chunkedPrompt.chunks) {
-      const role = String(c.role || '').toLowerCase() === 'user' ? 'User' : (String(c.role || '').toLowerCase() === 'model' ? 'Model' : 'Other');
-      if (Array.isArray(c.parts)) extractRawParts(role, c.parts);
-      else {
-        const th = Boolean(c.isThought || c.thought);
-        if ((!th || CONFIG.INCLUDE_THOUGHTS) && c.text) appendItem(role, { type: th ? 'thought' : 'text', text: String(c.text) }, joinStreamText_);
-        if (c.inlineImage?.data) appendItem(role, { type: 'image_b64', mimeType: c.inlineImage.mimeType || 'image/png', data: c.inlineImage.data }, null);
-        if (c.driveImage?.id) appendItem(role, { type: 'image_drive', fileId: c.driveImage.id }, null);
-      }
-    }
-  } else if (Array.isArray(data.contents)) {
-    for (const c of data.contents) {
-      extractRawParts(String(c.role || '').toLowerCase() === 'user' ? 'User' : 'Model', c.parts);
-    }
-  }
+    core_text = (
+        "# Tier 1: Core Knowledge\n" + "".join(hot_core_blocks)
+        if hot_core_blocks
+        else "# Tier 1: Core Knowledge\nNo core files configured yet."
+    )
+    (OUT_DIR / "hot-core.md").write_text(core_text, encoding="utf-8")
 
-  const turns = [];
-  for (const turn of rawTurns) {
-    const cleanedItems = [];
-    for (const item of turn.items) {
-      if (item.type === 'text' || item.type === 'thought') {
-        const clean = cleanTextArtifacts_(item.text);
-        if (clean) cleanedItems.push({ type: item.type, text: clean });
-      } else cleanedItems.push(item);
-    }
-    if (cleanedItems.length) turns.push({ role: turn.role, items: cleanedItems });
-  }
-  return { title, model, updatedIso, systemInstruction, turns };
-}
+    recent_text = (
+        f"# Tier 1: Chats & Docs Updated in Last {RECENT_DAYS} Days\n" + "".join(hot_recent_blocks)
+        if hot_recent_blocks
+        else f"# Tier 1: Recent Changes\nNo chats or docs updated in the last {RECENT_DAYS} days."
+    )
+    (OUT_DIR / "hot-recent.md").write_text(recent_text, encoding="utf-8")
 
-function formatTurnsMd_(turns) {
-  const lines = [];
-  for (const turn of turns) {
-    const body = turn.items.filter(i => i.type === 'text' || i.type === 'thought')
-      .map(i => i.type === 'thought' ? `<details>\n<summary>Thinking Process</summary>\n\n${i.text}\n\n</details>` : i.text)
-      .join('\n\n');
-    if (body.trim()) lines.push(`## ${turn.role}`, '', body, '', '---', '');
-  }
-  return lines;
-}
+    index_entries = []
+    for group_name, items in sorted(cold_groups.items()):
+        index_entries.extend(write_cold_chunks(group_name, items))
 
-function renderCleanMd_(chat) {
-  const lines = [`# ${chat.title}`, ''];
-  if (CONFIG.INCLUDE_METADATA) {
-    lines.push(`> **Model:** ${chat.model} | **Updated:** ${chat.updatedIso.replace('T', ' ').slice(0, 16)} UTC`, '', '---', '');
-  }
-  if (chat.systemInstruction) lines.push('## System Instructions', '', chat.systemInstruction, '', '---', '');
-  lines.push(...formatTurnsMd_(chat.turns));
-  return lines.join('\n').trim() + '\n';
-}
+    lines = [
+        "# Knowledge Base Index (Tier 2 Cold Bundles)",
+        "# Note: Core docs and chats updated in the last 14 days are already pre-loaded in Tier 1.",
+        "",
+    ]
+    for entry in index_entries:
+        lines.append(f"- URL: {entry['url']}")
+        lines.append(f"  Topic Group: {entry['group']}")
+        lines.append(f"  Chats/Files: {' | '.join(entry['titles'])}")
+        if entry["prompts"]:
+            lines.append(f"  User Questions: {' | '.join(entry['prompts'])}")
+        if entry["sections"]:
+            lines.append(f"  Key Sections: {' | '.join(entry['sections'])}")
+        if entry["summaries"]:
+            lines.append(f"  Summary: {' | '.join(entry['summaries'])}")
+        if entry["keywords"]:
+            lines.append(f"  Keywords: {' | '.join(entry['keywords'])}")
+        lines.append("")
 
-function renderContinuationMd_(chat, turns, startIdx, endIdx, partNum) {
-  const lines = [];
-  if (partNum) {
-    lines.push(`# ${chat.title} (Part ${partNum})`, '');
-  }
-  const rangeLabel = `Turns ${startIdx + 1}–${endIdx}`;
-  if (CONFIG.INCLUDE_METADATA) {
-    lines.push(`> **Continuation (${rangeLabel})** | **Model:** ${chat.model} | **Updated:** ${chat.updatedIso.replace('T', ' ').slice(0, 16)} UTC`, '', '---', '');
-  } else {
-    lines.push(`> **Continuation (${rangeLabel})**`, '', '---', '');
-  }
-  lines.push(...formatTurnsMd_(turns));
-  return lines.join('\n').trim() + '\n';
-}
+    (OUT_DIR / "llms.txt").write_text("\n".join(lines), encoding="utf-8")
+    print(f"Built {len(index_entries)} cold bundle(s) and updated Tier 1 + llms.txt.")
 
-function getSourceFolders_() {
-  const out = [];
-  for (const n of CONFIG.SOURCE_FOLDER_NAMES) {
-    const it = DriveApp.getFoldersByName(n);
-    while (it.hasNext()) { const f = it.next(); if (!f.isTrashed()) out.push(f); }
-  }
-  return out;
-}
-
-function getOrCreateFolder_(name) {
-  const it = DriveApp.getFoldersByName(name);
-  while (it.hasNext()) { const f = it.next(); if (!f.isTrashed()) return f; }
-  return DriveApp.createFolder(name);
-}
-
-function collectFiles_(folder, visited, out, sinceIso) {
-  const id = folder.getId();
-  if (visited.has(id)) return;
-  visited.add(id);
-  const fi = sinceIso
-    ? folder.searchFiles(`trashed = false and modifiedDate > "${sinceIso}"`)
-    : folder.getFiles();
-  while (fi.hasNext()) out.push(fi.next());
-  const si = folder.getFolders();
-  while (si.hasNext()) {
-    const s = si.next();
-    if (!s.isTrashed()) collectFiles_(s, visited, out, sinceIso);
-  }
-}
-
-function cleanName_(raw) {
-  return raw.replace(/\.(json|prompt|txt)$/i, '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'Untitled prompt';
-}
+if __name__ == "__main__":
+    main()
 ```
 
 ---
 
-### Quick Test to Verify End-to-End
-1. Make sure your `GITHUB_TOKEN` (or a new `AI_KB_TOKEN` in Script Properties) has **Contents: Read & write** on `inikashx-hub/ai-kb`.
-2. Add **`[kb]`** to the name of one chat JSON in Drive (or move one chat into `Google AI Studio/KB/Maths/`).
-3. In Apps Script, select **`flushKbSyncNow`** and tap **Run**.
-4. Within ~20 seconds, you’ll see that file land cleanly in `inikashx-hub/ai-kb`, trigger `build-kb.yml`, and automatically generate its 1-turn Subject Pack in `_ai_bundles/packs-list.txt` and Cold Bundle in `_ai_bundles/llms.txt`!
+### What `llms.txt` Will Look Like for Your Sample Chat
+Instead of noisy `User, Model` headings, Gemini sees this crystal-clear index entry:
+```text
+- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-2026-09.8e4a12c1.md
+  Topic Group: chats-2026-09
+  Chats/Files: Solving Math Questions Under 30s (2026-09-29)
+  User Questions: How to solve the given question within 30 seconds | I don't understand the coefficient method | When to use this method and when to be cautious about the same?
+  Key Sections: Method 1: The 10-Second Coefficient Shortcut (Exam Trick) | Method 2: Complete 30-Second Algebraic Solution | What is a "Coefficient"? | The Idea Behind the Shortcut | When to USE this method: | When to be CAUTIOUS (or NOT use it):
+```
+That makes Turn-2 retrieval nearly effortless when you later ask *"What was that SBI Clerk coefficient shortcut for linear equations and when shouldn't I use it?"*
+
+### One Small Tip on Organizing `kb/`
+* If you dump all synced chats into **`kb/chats/`**, the script automatically bundles them by month (`chats-2026-09`, `chats-2026-10`, etc.).
+* If you prefer topic-based bundles (even better for accuracy!), sort key subjects into subfolders like **`kb/quant/`**, **`kb/reasoning/`**, **`kb/ga/`**, and **`kb/core/`** (for master cheat sheets you always want in 1-turn memory).
 
 ---
 
 ## User
 
-I don't know how to edit the token
+Where should I upload a knowledge base before uploading python script?
 
 ---
 
 ## Model
 
-First, check which kind of token you already have—you might not even need to edit it!
+Upload your `.md` knowledge base files into a **`kb/`** folder at the **root** of your `inikashx-hub/ai-kb` repository (on the same level as `README.md` and `.github`).
 
-### Step 1: Check Your Token Prefix in Apps Script
-1. In Google Apps Script, tap **Project Settings (⚙️ gear icon)** on the left.
-2. Scroll down to **Script Properties** and look at `GITHUB_TOKEN`:
-   * If it starts with **`ghp_`** *(Classic token)* → **You don’t need to change anything!** It already works on both repos.
-   * If it starts with **`github_pat_`** *(Fine-grained token)* → Follow Step 2 below.
+### Which Subfolder Inside `kb/` Should You Use?
+* **`kb/core/`** → Put your **most important master notes / cheat sheets** here (always pre-loaded for 1-turn answers).
+* **`kb/chats/`** → Put your exported AI Studio **`.md` chat files** here if you want one simple dump folder (the script will automatically bundle them by month, like `2026-09`, and put the last 14 days into `hot-recent.md`).
+* **OR `kb/<topic>/`** (e.g., `kb/quant/`, `kb/reasoning/`) → Use topic folders instead of `kb/chats/` if you want subject-based bundles.
 
----
-
-### Step 2: Grant Access to `ai-kb` on GitHub
-Open **`https://github.com/settings/personal-access-tokens`** in your phone browser *(or tap your **Profile picture → Settings → scroll down to Developer settings → Personal access tokens → Fine-grained tokens**)*.
-
-From there, pick whichever is easier:
-
-#### Easiest Way: Edit Your Existing Token *(No Apps Script Changes Needed)*
-1. Tap the **name** of your existing token.
-2. Scroll to **Repository access** → choose **Only select repositories**.
-3. Make sure **BOTH `AI-Studio-pdf-worker` AND `ai-kb`** are checked! *(Double-check that `AI-Studio-pdf-worker` stays selected so your PDF builder doesn't lose access.)*
-4. Under **Repository permissions**, confirm **Contents** is set to **Read and write** (keep **Actions** / **Workflows** as-is for your PDF worker).
-5. Tap **Save** / **Update permissions** at the bottom. Done—your token string stays the same!
-
-#### Alternative Way: Add a Separate `AI_KB_TOKEN` *(Zero Risk to PDF Worker)*
-1. On the **Fine-grained tokens** page, tap **Generate new token**.
-2. **Token name:** `ai-kb-sync` (pick any **Expiration** you prefer).
-3. **Repository access:** **Only select repositories** → select **`ai-kb`**.
-4. **Repository permissions → Contents:** **Read and write**.
-5. Tap **Generate token** and copy the `github_pat_...` string.
-6. Back in Apps Script → **Project Settings (⚙️) → Script Properties → Add script property**:
-   * **Property:** `AI_KB_TOKEN`
-   * **Value:** *(paste your new token)*
-   * Tap **Save script properties**.
-
-Once done, tag one chat in Drive with `[kb]` (or run **`flushKbSyncNow`** in Apps Script) to test the sync!
+*(Upload **only the `.md` files**—skip the `.pdf` duplicates.)*
 
 ---
 
-## Model
+### How to Upload Them on Mobile Right Now
+GitHub won't let you upload into a folder until that folder exists, so create it in 10 seconds first:
 
-Your script pasted cleanly and ran with **zero errors**!
+1. Go to the **main root page** of `ai-kb` (tap `ai-kb` in the path if you're still inside `.github`).
+2. Tap **Add file** → **Create new file**.
+3. Type **`kb/chats/README.md`** (or `kb/core/README.md`) in the filename box, type `# Knowledge Base` in the body, and tap **Commit changes...**. *(This creates the `kb/` folder!)*
+4. Open **`kb/chats/`** (or whichever subfolder you created) → tap **Add file** → **Upload files** → select your `.md` files from your phone or Google Drive → tap **Commit changes**.
+5. **Now add the Python script:** Return to the root of `ai-kb`, tap **Add file** → **Create new file**, type **`scripts/build_kb.py`**, paste the script from the previous message, and commit.
 
-`MD: 0, PDF batch queued: 0, ai-kb synced: 0` just means your existing Drive files were already synced to Markdown, and **none of the source chats are marked for `ai-kb` yet**.
-
----
-
-### How to Run Your First `ai-kb` Sync Test
-1. **Go to your source AI Studio folder in Google Drive** (`Google AI Studio` or `AI Studio` — *not* `AI Studio Markdown`).
-2. Pick one study chat (for example, inside `Maths/`) and either:
-   * **Rename it** to include **`[kb]`** (e.g., `Percentages [kb]`), **OR**
-   * Move it into a subfolder named **`KB`** inside `Google AI Studio` (e.g., `Google AI Studio/KB/Maths/`).
-   *(Remember: `[core]` sends it to `core/` for Tier 1 instead.)*
-3. Come back to Apps Script and tap **Run** on **`flushKbSyncNow`**.
-
----
-
-### What to Look For in the Execution Log
-* **Success:** You'll see `ai-kb synced: 1` (and the chat will appear inside `inikashx-hub/ai-kb/chats/...` within seconds).
-* **If it logs a `403` or `404` error:** That just means the token needs `Contents: Read & write` access to `ai-kb`—share the exact log message if that happens and we'll sort it right away!
+As soon as you commit `scripts/build_kb.py`, open the **Actions** tab—your workflow will run automatically and build `_ai_bundles/`!
 
 ---
 
 ## User
 
-I renamed it in drive. But, app script still shows 0 processed
+I have just pasted the python code
 
 ---
 
 ## Model
 
-Look at your Drive screenshot—that explains it immediately!
+Great job getting everything uploaded! Looking closely at your screenshot, I spotted **two small path differences** between your repo and what the workflow currently expects:
 
-Look at **`Google AI Studio/KB/English` (Modified 8:02 pm)** in `My Drive`:
-1. Unlike GitHub, **Google Drive does not create nested folders when you type `/`**—so it created one flat folder at the root of `My Drive` literally named `"Google AI Studio/KB/English"`.
-2. Because that folder sits at `My Drive` root (outside `Google AI Studio`) and its literal name isn't `"KB"`, Apps Script skipped it. *(Also remember: always put `[kb]` or `KB/` on your **source AI Studio chat files**, not the `.md` copies inside `AI Studio Markdown`.)*
+1. Your folder is named **`chats/`** at the root (instead of `kb/chats/`).
+2. Your Python file is at the root named **`build-kb.py`** (with a hyphen, instead of `scripts/build_kb.py`).
+
+Instead of making you delete or move your `chats/` folder on mobile, **it’s much easier to just update `build-kb.yml` and `build-kb.py` to match your exact layout right now.**
 
 ---
 
-### Quick 2-Step Fix
+### Fix 1: Update `.github/workflows/build-kb.yml`
+1. Open **`.github/workflows`** → tap **`build-kb.yml`** → tap the **pencil icon (✏️)** to edit.
+2. Replace everything with this:
 
-#### 1. (Optional Tidy-Up in Drive)
-You can either keep that folder as-is (the updated script below now handles `/` in Drive folder names too!), **or** organize cleanly as:
-* `My Drive` → create folder **`KB`** → create **`English`**, **`Maths`**, etc. inside **`KB`** → move source chats in.
-* **Or** leave chats inside `General Awareness` / `Google AI Studio` and just add **`[kb]`** to the chat filename.
+```yaml
+name: Build AI Knowledge Bundles
 
-#### 2. Update Apps Script (Now Scans `My Drive/KB`, Handles `/`, & Logs Counts)
-Paste this updated complete code (adds `KB` root scanning, strips `My Drive` from paths, handles slash-named folders like `Google AI Studio/KB/English`, and prints `Scanned` + `KB tracked` counts in the log):
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "chats/**"
+      - "core/**"
+      - "build-kb.py"
+  workflow_dispatch:
 
-```javascript
-/**
- * Syncs AI Studio chats -> Clean .md in Drive -> Batched Private PDFs + Selective Batched Public KB Sync (Choice A)
- * Reads GITHUB_TOKEN, CALLBACK_SECRET, and optional AI_KB_TOKEN from Project Settings -> Script Properties.
- */
-const CONFIG = {
-  SOURCE_FOLDER_NAMES: ['Google AI Studio', 'AI Studio'],
-  MD_FOLDER_NAME: 'AI Studio Markdown',
-  PDF_FOLDER_NAME: 'AI Studio PDF',
+permissions:
+  contents: write
 
-  // Private PDF Worker Repo
-  GITHUB_OWNER: 'inikashx-hub',
-  GITHUB_REPO: 'AI-Studio-pdf-worker',
-  GITHUB_BRANCH: 'main',
+jobs:
+  build-bundles:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-  // Public Selective Knowledge Base Repo (Choice A)
-  KB_GITHUB_OWNER: 'inikashx-hub',
-  KB_GITHUB_REPO: 'ai-kb',
-  KB_GITHUB_BRANCH: 'main',
-  KB_FOLDER_NAME: 'KB',
-  KB_TAG_REGEX: /\[kb\]/i,
-  KB_CORE_TAG_REGEX: /\[core\]/i,
-  KB_IDLE_MINUTES: 15,        // Wait 15 min idle before pushing to ai-kb
-  KB_BATCH_HOURS: 4,          // Push batched commit to ai-kb at most every 4 hours
-  KB_MAX_BATCH_FILES: 25,
-
-  INCLUDE_THOUGHTS: false,
-  INCLUDE_METADATA: true,
-  STATE_PREFIX: 'gh_sync_',
-  SCAN_STATE_KEY: 'gh_last_scan_ms',
-  DISPATCH_STATE_KEY: 'gh_last_pdf_dispatch_ms',
-  KB_DISPATCH_STATE_KEY: 'gh_last_kb_dispatch_ms',
-
-  PDF_IDLE_MINUTES: 25,       // Only build PDF after chat has been idle for 25 min
-  PDF_BATCH_HOURS: 4,         // Trigger GitHub PDF batch at most every 4 hours (max 6x/day)
-  MAX_SINGLE_PDF_BYTES: 15 * 1024 * 1024
-};
-
-function getSecrets_() {
-  const props = PropertiesService.getScriptProperties();
-  const token = (props.getProperty('GITHUB_TOKEN') || '').trim();
-  const kbToken = (props.getProperty('AI_KB_TOKEN') || token).trim();
-  const secret = (props.getProperty('CALLBACK_SECRET') || '').trim();
-  if (!token || !secret) {
-    throw new Error('Missing GITHUB_TOKEN or CALLBACK_SECRET in Project Settings -> Script Properties.');
-  }
-  return { token, kbToken, secret };
-}
-
-function hashTurns_(turns) {
-  const raw = JSON.stringify(turns);
-  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, raw, Utilities.Charset.UTF_8);
-  return digest.map(b => ('0' + ((b & 0xff).toString(16))).slice(-2)).join('');
-}
-
-function syncCleanMarkdown() {
-  syncCleanMarkdown_(false, false);
-}
-
-// Run manually anytime you want pending PDFs built immediately
-function flushPendingPdfsNow() {
-  syncCleanMarkdown_(true, false);
-}
-
-// Run manually anytime you want [kb] / [core] chats pushed to ai-kb immediately
-function flushKbSyncNow() {
-  syncCleanMarkdown_(false, true);
-}
-
-function syncCleanMarkdown_(forcePdfFlush, forceKbFlush) {
-  const cache = CacheService.getScriptCache();
-  if (cache.get('gh_sync_running')) return;
-  cache.put('gh_sync_running', '1', 300);
-
-  const startTime = Date.now();
-  const fullScan = forcePdfFlush || forceKbFlush;
-
-  try {
-    const { token, kbToken } = getSecrets_();
-    const mdFolder = getOrCreateFolder_(CONFIG.MD_FOLDER_NAME);
-    const pdfFolder = getOrCreateFolder_(CONFIG.PDF_FOLDER_NAME);
-    const rootId = DriveApp.getRootFolder().getId();
-    const visited = new Set([mdFolder.getId(), pdfFolder.getId()]);
-
-    const props = PropertiesService.getScriptProperties();
-    const lastScanMs = Number(props.getProperty(CONFIG.SCAN_STATE_KEY) || 0);
-    const sinceIso = (!fullScan && lastScanMs > 0)
-      ? new Date(lastScanMs - 5 * 60 * 1000).toISOString()
-      : '';
-
-    const files = [];
-    for (const f of getSourceFolders_()) collectFiles_(f, visited, files, sinceIso);
-
-    const seen = new Set(files.map(f => f.getId()));
-    try {
-      const baseQ = 'mimeType = "application/vnd.google-makersuite.prompt" and trashed = false';
-      const fullQ = sinceIso ? `${baseQ} and modifiedDate > "${sinceIso}"` : baseQ;
-      const q = DriveApp.searchFiles(fullQ);
-      while (q.hasNext()) {
-        const pf = q.next();
-        if (!seen.has(pf.getId())) { seen.add(pf.getId()); files.push(pf); }
-      }
-    } catch (e) {}
-
-    const stateMap = props.getProperties();
-    let mdCount = 0, queuedPdfCount = 0, kbSyncedCount = 0, paused = false;
-
-    // PHASE 1: Fast Markdown sync in Drive (0 GitHub minutes)
-    for (const file of files) {
-      if (Date.now() - startTime > 120000) { paused = true; break; }
-      if (file.isTrashed()) continue;
-      const mime = file.getMimeType();
-      if (mime.startsWith('application/vnd.google-apps.') || mime.startsWith('image/') ||
-          mime.startsWith('video/') || mime.startsWith('audio/') || mime === 'application/pdf') continue;
-      if (file.getSize() > 15 * 1024 * 1024) continue;
-
-      const id = file.getId();
-      const updatedMs = file.getLastUpdated().getTime();
-      const key = CONFIG.STATE_PREFIX + id;
-      let prev = {};
-      if (stateMap[key]) { try { prev = JSON.parse(stateMap[key]); } catch (e) {} }
-
-      const targetKbPath = resolveKbTarget_(file, cleanName_(file.getName()), rootId);
-      const needsMd = prev.t !== updatedMs || !prev.m;
-      const needsKbPathSync = (targetKbPath || '') !== (prev.kbTarget || '') || (targetKbPath || '') !== (prev.kbP || '');
-      if (!needsMd && !needsKbPathSync) continue;
-
-      if (needsMd) {
-        let data;
-        try { data = JSON.parse(file.getBlob().getDataAsString('UTF-8')); } catch (e) { continue; }
-        if (!data || (!data.chunkedPrompt && !data.contents && !data.runSettings)) continue;
-
-        const chat = extractCleanChat_(data, file);
-        const baseName = cleanName_(file.getName());
-        const mdName = `${baseName}.md`;
-        const fullMdText = renderCleanMd_(chat);
-
-        let mdId = prev.m || null;
-        if (!mdId) {
-          const byName = mdFolder.getFilesByName(mdName);
-          while (byName.hasNext()) {
-            const ef = byName.next();
-            if (!ef.isTrashed()) { mdId = ef.getId(); break; }
-          }
-        }
-        let updated = false;
-        if (mdId) {
-          try {
-            const ex = DriveApp.getFileById(mdId);
-            if (!ex.isTrashed()) {
-              ex.setContent(fullMdText);
-              if (ex.getName() !== mdName) ex.setName(mdName);
-              updated = true;
-            }
-          } catch (e) {}
-        }
-        if (!updated) mdId = mdFolder.createFile(Utilities.newBlob(fullMdText, 'text/markdown', mdName)).getId();
-
-        prev.t = updatedMs;
-        prev.m = mdId;
-        mdCount++;
-      }
-
-      if (targetKbPath) prev.kbTarget = targetKbPath;
-      else delete prev.kbTarget;
-
-      saveStateKey_(props, stateMap, key, prev);
-    }
-
-    if (!paused) {
-      props.setProperty(CONFIG.SCAN_STATE_KEY, String(startTime));
-    }
-
-    // PHASE 2: Batched + Idle-Debounced Private PDF Queueing
-    const lastPdfMs = Number(props.getProperty(CONFIG.DISPATCH_STATE_KEY) || 0);
-    const canDispatchPdf = forcePdfFlush || (Date.now() - lastPdfMs >= CONFIG.PDF_BATCH_HOURS * 60 * 60 * 1000);
-    const pdfIdleMs = CONFIG.PDF_IDLE_MINUTES * 60 * 1000;
-
-    if (canDispatchPdf && !paused) {
-      for (const key of Object.keys(stateMap)) {
-        if (!key.startsWith(CONFIG.STATE_PREFIX)) continue;
-        if (Date.now() - startTime > 190000) { paused = true; break; }
-
-        let prev = {};
-        try { prev = JSON.parse(stateMap[key]); } catch (e) { continue; }
-        if (!prev.t) continue;
-
-        const jobInFlight = prev.qa && (Date.now() - prev.qa < 20 * 60 * 1000);
-        const needsPdf = (prev.pt !== prev.t || !prev.p) && !jobInFlight;
-        if (!needsPdf) continue;
-        if (!forcePdfFlush && (Date.now() - prev.t < pdfIdleMs)) continue;
-
-        const id = key.slice(CONFIG.STATE_PREFIX.length);
-        let file;
-        try { file = DriveApp.getFileById(id); } catch (e) { continue; }
-        if (file.isTrashed() || file.getSize() > 15 * 1024 * 1024) continue;
-
-        const updatedMs = file.getLastUpdated().getTime();
-        if (!forcePdfFlush && (Date.now() - updatedMs < pdfIdleMs)) continue;
-
-        let data;
-        try { data = JSON.parse(file.getBlob().getDataAsString('UTF-8')); } catch (e) { continue; }
-        if (!data || (!data.chunkedPrompt && !data.contents && !data.runSettings)) continue;
-
-        const chat = extractCleanChat_(data, file);
-        const baseName = cleanName_(file.getName());
-        const fullMdText = renderCleanMd_(chat);
-
-        const fullTc = chat.turns.length;
-        const fullTh = hashTurns_(chat.turns);
-        let mode = 'full', part = 1, partStartTc = 0, expectedTc = 0, existingPdfId = null;
-        let pdfName = `${baseName}.pdf`, turnsForPdf = chat.turns, jobMdText = fullMdText, skipQueue = false;
-
-        if (prev.p && typeof prev.tc === 'number' && prev.tc > 0 && prev.tc <= fullTc && prev.th) {
-          const prefixHash = hashTurns_(chat.turns.slice(0, prev.tc));
-          if (prefixHash === prev.th) {
-            try {
-              const existingPdf = DriveApp.getFileById(prev.p);
-              if (!existingPdf.isTrashed()) {
-                const curPart = prev.part || 1;
-                const curPdfName = curPart > 1 ? `${baseName} (Part ${curPart}).pdf` : `${baseName}.pdf`;
-                if (fullTc === prev.tc) {
-                  if (existingPdf.getName() !== curPdfName) existingPdf.setName(curPdfName);
-                  prev.pt = updatedMs;
-                  skipQueue = true;
-                } else if (existingPdf.getSize() < CONFIG.MAX_SINGLE_PDF_BYTES) {
-                  mode = 'append'; part = curPart; partStartTc = prev.partStartTc || 0;
-                  expectedTc = prev.tc; existingPdfId = prev.p; pdfName = curPdfName;
-                  turnsForPdf = chat.turns.slice(prev.tc);
-                  jobMdText = renderContinuationMd_(chat, turnsForPdf, prev.tc, fullTc, null);
-                } else {
-                  mode = 'new_part'; part = curPart + 1; partStartTc = prev.tc;
-                  expectedTc = prev.tc; existingPdfId = null; pdfName = `${baseName} (Part ${part}).pdf`;
-                  turnsForPdf = chat.turns.slice(prev.tc);
-                  jobMdText = renderContinuationMd_(chat, turnsForPdf, prev.tc, fullTc, part);
-                }
-              }
-            } catch (e) {}
-          }
-        }
-
-        if (!skipQueue) {
-          const assets = collectAssets_(turnsForPdf);
-          const jobPayload = {
-            sourceId: id, updatedMs, baseName, pdfName, mode, existingPdfId,
-            expectedTc, nextTc: fullTc, nextTh: fullTh, part, partStartTc,
-            mdText: jobMdText, assets
-          };
-          if (pushJobToGitHub_(`jobs/${id}.json`, jobPayload, token)) {
-            prev.qt = updatedMs;
-            prev.qa = Date.now();
-            queuedPdfCount++;
-          }
-        }
-        saveStateKey_(props, stateMap, key, prev);
-      }
-
-      if (queuedPdfCount > 0) {
-        triggerGitHubWorkflow_(token);
-        if (!paused) props.setProperty(CONFIG.DISPATCH_STATE_KEY, String(Date.now()));
-      }
-    }
-
-    // PHASE 3: Batched Selective Sync to Public ai-kb Repo
-    const lastKbMs = Number(props.getProperty(CONFIG.KB_DISPATCH_STATE_KEY) || 0);
-    const canDispatchKb = forceKbFlush || (Date.now() - lastKbMs >= CONFIG.KB_BATCH_HOURS * 60 * 60 * 1000);
-    const kbIdleMs = CONFIG.KB_IDLE_MINUTES * 60 * 1000;
-    let kbTrackedCount = 0;
-
-    if (canDispatchKb && !paused) {
-      const kbOps = [];
-      const pendingStateUpdates = [];
-
-      for (const key of Object.keys(stateMap)) {
-        if (!key.startsWith(CONFIG.STATE_PREFIX)) continue;
-        if (kbOps.length >= CONFIG.KB_MAX_BATCH_FILES) break;
-        if (Date.now() - startTime > 240000) { paused = true; break; }
-
-        let prev = {};
-        try { prev = JSON.parse(stateMap[key]); } catch (e) { continue; }
-        if (!prev.t || !prev.m) continue;
-
-        const targetPath = prev.kbTarget || null;
-        const oldPath = prev.kbP || null;
-        if (targetPath) kbTrackedCount++;
-        if (!targetPath && !oldPath) continue;
-        if (targetPath && prev.kbT === prev.t && oldPath === targetPath) continue;
-        if (!forceKbFlush && (Date.now() - prev.t < kbIdleMs)) continue;
-
-        const id = key.slice(CONFIG.STATE_PREFIX.length);
-        let srcFile;
-        try { srcFile = DriveApp.getFileById(id); } catch (e) { continue; }
-
-        if (srcFile.isTrashed() || !targetPath) {
-          if (oldPath) {
-            kbOps.push({ path: oldPath, content: null });
-            delete prev.kbP; delete prev.kbT; delete prev.kbTarget;
-            pendingStateUpdates.push({ key, prev });
-          }
-          continue;
-        }
-
-        const updatedMs = srcFile.getLastUpdated().getTime();
-        if (!forceKbFlush && (Date.now() - updatedMs < kbIdleMs)) continue;
-
-        let mdText = '';
-        try {
-          const mdFile = DriveApp.getFileById(prev.m);
-          if (mdFile.isTrashed()) continue;
-          mdText = mdFile.getBlob().getDataAsString('UTF-8');
-        } catch (e) { continue; }
-
-        if (oldPath && oldPath !== targetPath) {
-          kbOps.push({ path: oldPath, content: null });
-        }
-        kbOps.push({ path: targetPath, content: mdText });
-        prev.kbP = targetPath;
-        prev.kbT = prev.t;
-        pendingStateUpdates.push({ key, prev });
-      }
-
-      if (kbOps.length > 0) {
-        const pushed = pushBatchToGitHubRepo_(
-          CONFIG.KB_GITHUB_OWNER,
-          CONFIG.KB_GITHUB_REPO,
-          CONFIG.KB_GITHUB_BRANCH,
-          kbOps,
-          `sync: batch update ${kbOps.length} KB file(s) from Drive`,
-          kbToken
-        );
-        if (pushed) {
-          kbSyncedCount = pendingStateUpdates.length;
-          for (const item of pendingStateUpdates) {
-            saveStateKey_(props, stateMap, item.key, item.prev);
-          }
-          if (!paused) props.setProperty(CONFIG.KB_DISPATCH_STATE_KEY, String(Date.now()));
-        }
-      }
-    }
-
-    console.log(paused
-      ? `Paused at time guard. Scanned: ${files.length}, MD: ${mdCount}, KB tracked: ${kbTrackedCount}, PDF queued: ${queuedPdfCount}, ai-kb synced: ${kbSyncedCount}.`
-      : `Done! Scanned: ${files.length}, MD: ${mdCount}, KB tracked: ${kbTrackedCount}, PDF queued: ${queuedPdfCount}, ai-kb synced: ${kbSyncedCount}`);
-  } finally {
-    cache.remove('gh_sync_running');
-  }
-}
+      - name: Build Hot/Cold bundles and llms.txt
+        run: python3 build-kb.py

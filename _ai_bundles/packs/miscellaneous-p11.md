@@ -1,723 +1,608 @@
-# Subject Pack: miscellaneous (Part 11/14)
+# Subject Pack: miscellaneous (Part 11/24)
 
 
 ---
-## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 11/14]
+## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 1/14]
 
-function collectFiles_(folder, visited, out, sinceIso) {
-  const id = folder.getId();
-  if (visited.has(id)) return;
-  visited.add(id);
-  const fi = sinceIso
-    ? folder.searchFiles(`trashed = false and modifiedDate > "${sinceIso}"`)
-    : folder.getFiles();
-  while (fi.hasNext()) out.push(fi.next());
-  const si = folder.getFolders();
-  while (si.hasNext()) {
-    const s = si.next();
-    if (!s.isTrashed()) collectFiles_(s, visited, out, sinceIso);
-  }
-}
+# Optimizing Two-Step LLM Routing
 
-function cleanName_(raw) {
-  return raw.replace(/\.(json|prompt|txt)$/i, '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'Untitled prompt';
-}
+> **Model:** gemini-4-hydrogen | **Updated:** 2026-11-27 15:12 UTC
+
+---
+
+## User
+
+Thinking of ways to get RAG like functionality in normal Google AI Studio instead of using API with the help of URL toggle and GitHub
+
+---
+
+## Model
+
+You can get surprisingly close to a real RAG pipeline right inside the **Google AI Studio Playground** (no API keys, vector DBs, or custom servers) by treating **GitHub as your dynamic document store** and **URL context** as your retriever.
+
+However, simply pasting `https://github.com/user/repo` won't work like RAG—URL Context **does not crawl nested links or folders**. It only reads the exact URLs you give it (meaning a standard GitHub repo link only gives Gemini the landing page HTML and `README.md`).
+
+To make it behave like actual RAG, here are the best ways to architect **GitHub + URL Context** in normal Google AI Studio, ranked from simplest to most scalable.
+
+---
+
+### First, Two Crucial Rules for GitHub + URL Context
+1. **Always use `raw.githubusercontent.com` (or GitHub Gist `/raw`), NOT `github.com/user/repo/blob/...`:**
+   Standard GitHub URLs return heavy HTML UI wrappers, navigation menus, and truncated previews. Raw URLs return pure Markdown, JSON, CSV, XML, or code—saving massive amounts of tokens and avoiding parsing errors.
+2. **Public repos only:**
+   URL Context can only fetch **publicly accessible URLs**. Do **not** put private/sensitive data in a public repo just to use this trick. (For private codebases, check **Method 4** below.)
+
+---
+
+### Method 1: The "Saved Prompt + Sharded Bundles" Setup (Best for < 20 Files / Medium KBs)
+URL Context allows up to **20 URLs per request** (up to **34 MB per URL**, though bounded by the model's context window). Instead of linking 200 tiny notes, bundle them into **5–15 logical files** in a public GitHub repo.
+
+1. **Organize your repo into topic files** (e.g., `docs/architecture.md`, `docs/api-spec.md`, `notes/decisions.md`).
+2. **Automate bundling (optional but huge time-saver):** Add a simple **GitHub Action** using a tool like **Repomix** (`repomix --split-output 1mb`) or a small Python script that merges folders into clean `.md` or `.xml` bundles on every `git push`.
+3. **Save a Template in Google AI Studio:**
+   * Turn **ON** the **URL context** toggle in the right-hand Tools sidebar.
+   * In **System Instructions**, paste your list of `https://raw.githubusercontent.com/<user>/<repo>/main/bundle-1.md` URLs along with a rule like:
+     > *"Use your URL context / browse tool to read the raw GitHub files listed below before answering. Only answer using facts found in those URLs, and cite the exact filename/URL for every claim."*
+   * **Save the prompt** in AI Studio. Whenever you open it, you have a live, synced chat over your GitHub repo—just edit and push to GitHub to update the "knowledge base."
+
+---
+
+### Method 2: The `llms.txt` Two-Step "Router" (True Retrieval for Large Repos)
+If your repo has **hundreds of files** (way too big to stuff all at once into 20 URLs or a single turn's token budget), mimic a two-step RAG retriever using an index file—similar to how `llms.txt` works for developer docs.
+
+1. Create a lightweight **`llms.txt`** (or `manifest.json`) in your repo root containing **1–2 line descriptions + exact raw URLs** for every doc/chunk:
+   ```markdown
+   # Knowledge Base Index
+   - [Auth & OAuth Flows](https://raw.githubusercontent.com/you/kb/main/auth.md): JWT setup, refresh tokens, middleware.
+   - [Billing Webhook Spec](https://raw.githubusercontent.com/you/kb/main/billing.md): Stripe events, retry logic, DB schema.
+   ```
+   *(You can auto-generate this index via a GitHub Action whenever files change.)*
+2. Put **only** the `llms.txt` URL in your **System Instructions**, and instruct Gemini:
+   > *"On the first turn of a question, read `llms.txt`. Identify the 2–4 raw URLs most relevant to the user's question and list them explicitly. Do not guess answers before reading the target files."*
+3. **Two-turn retrieval:**
+   * **Turn 1:** You ask your question -> Gemini reads `llms.txt` and identifies the exact 3 URLs needed.
+   * **Turn 2:** Paste those 3 URLs (or tell it to fetch them if you copy-paste them in) -> Gemini reads only the relevant chunks and answers with zero context bloat.
+
+---
+
+### Method 3: GitHub Pages + "Google Search Grounding" + "URL Context" (Zero-Manual-URL Search)
+Notice that Google AI Studio lets you toggle **both** **Grounding with Google Search** and **URL context** at the same time. Google explicitly recommends this pairing: *"Search for breadth, URL Context for depth."*
+
+If you publish your GitHub repo via **GitHub Pages** (`https://<username>.github.io/<repo>/`, e.g., with MkDocs or plain Markdown/HTML) and it gets indexed by Google:
+1. Enable **both** `Grounding with Google Search` and `URL context` in AI Studio.
+2. Put this in **System Instructions**:
+   > *"Before answering, always search `site:username.github.io/your-repo` using Google Search, then use the URL context / browse tool to read the full content of the top matching pages."*
+
+**Why this feels like real RAG:** Google Search acts as your free semantic/keyword retriever across unlimited pages, and URL Context reads the top matching pages in full before generating the answer. **Catch:** Newly pushed GitHub Pages edits aren't searchable until Google crawls/re-indexes them, so this works better for stable documentation than rapid minute-by-minute edits.
+
+---
+
+### Method 4: Need Private Repos? Use AI Studio's Native GitHub Sync (or Upload Bundles)
+If your repo **cannot be public**:
+* **AI Studio Build Tab (Two-Way GitHub Sync):** In Google AI Studio's **Build** section, you can click `+` -> **Import from GitHub** to link a repository (and even sync changes back and forth) directly inside an AI Studio workspace without exposing raw public URLs.
+* **Playground Drag-and-Drop:** Run `npx repomix` locally (with `--split-output 1mb` if huge) to flatten your private repo into 1–3 clean text/XML files and drop them straight into a Playground chat. You lose the "auto-update via URL" benefit, but it keeps private code off the public internet.
+
+---
+
+### Watch Out for These Gotchas
+* **Stale Cache Behavior:** URL Context uses a two-stage fetch—it checks Google's internal web index cache first, and only falls back to a live fetch if not cached. GitHub's `raw.githubusercontent.com` CDN also caches files for ~5 minutes. If you just pushed a fix and Gemini insists on old info, try appending a dummy query string like `?v=2` (or linking a specific commit SHA URL instead of `/main/`) to force a fresh fetch.
+* **Toggle Resetting:** In Google AI Studio Playground, double-check that **URL context** is actually toggled ON in the right sidebar when starting a new chat or duplicating prompts, as it defaults to OFF on fresh sessions.
+* **Verify Retrieval:** Turn on **Show Thoughts** (if available on your selected model) or ask Gemini to quote exact headings—if a URL silently fails to fetch (e.g., repo is private or URL has a typo), you want the model instructed to tell you *"URL fetch failed"* rather than hallucinating from memory.
+
+---
+
+## User
+
+Compare method 1 and 2
+
+---
+
+## Model
+
+Here is a side-by-side breakdown of **Method 1 (Sharded Bundles)** vs. **Method 2 (`llms.txt` Two-Step Router)** so you can pick the right architecture for your knowledge base.
+
+### At a Glance
+
+| Feature | Method 1: Sharded Bundles | Method 2: `llms.txt` Two-Step Router |
+| :--- | :--- | :--- |
+| **How it works** | Loads all bundled files upfront via System Instructions. | Loads only a tiny index (`llms.txt`) first, then fetches specific files in Turn 2. |
+| **User Experience** | **1-Turn (Instant):** Ask a question, get the answer immediately. | **2-Turn (Manual step):** Ask question → Gemini picks URLs → You paste/confirm them → Answer. |
+| **Max Knowledge Base Size** | **Medium:** Hard-capped at **20 URLs** and Gemini’s context window (~1M tokens total). | **Massive:** Virtually unlimited files in GitHub; only 2–5 relevant files enter context per question. |
+| **Latency & Token Usage** | **Slower / Heavy:** Re-processes massive documents even for tiny questions. | **Fast / Lightweight:** Context stays small and focused on just what’s needed. |
+| **Accuracy / Failure Mode** | **High Recall:** Never misses a file, but huge contexts can dilute attention on subtle details. | **Routing Risk:** If your `llms.txt` summaries are vague, Gemini might pick the wrong file. |
+| **Maintenance Effort** | Low–Medium (best with a GitHub Action that auto-merges files on push). | Medium (requires keeping `llms.txt` descriptions accurate as you add files). |
+
+---
+
+### The 4 Biggest Trade-Offs
+
+#### 1. Friction vs. Scalability (The Core Trade-off)
+* **Method 1 feels like magic** once set up: you open your saved AI Studio prompt, type a question, and get an answer in one shot. However, it hits a brick wall if your repo grows past **20 files** (or ~500k–800k tokens across bundles, leaving room for chat history).
+* **Method 2 scales indefinitely**—your repo can have 500 separate Markdown files, PDFs, or code modules—but because Google AI Studio's URL Context tool doesn't recursively auto-crawl links found *inside* `llms.txt` in a single turn, **you** act as the middleman copying the 2–4 URLs Gemini asks for into Turn 2.
+
+#### 2. Context Pollution & Speed
+* **Method 1** dumps *everything* into the prompt. Even if you only ask about a single API error code, Gemini still has to read 400k tokens of unrelated HR docs, UI specs, and old meeting notes. That makes responses noticeably slower and can occasionally cause "needle-in-a-haystack" misses across multi-turn chats.
+* **Method 2** keeps
+
+---
+
+## User
+
+How can we optimise the method 2 for accuracy and user experience?
+
+---
+
+## Model
+
+Method 2 (`llms.txt` Two-Step Router) usually breaks down in two places:
+1. **Accuracy:** Gemini picks the wrong files from `llms.txt`, forgets a related dependency file, or guesses the answer in Turn 1 without waiting to read the actual docs.
+2. **UX:** Having to highlight and copy-paste multiple `raw.githubusercontent.com` links into Turn 2 gets tedious fast.
+
+You can solve both inside the normal Google AI Studio UI using the optimizations below.
+
+---
+
+### Part 1: Optimizing Accuracy (Better Retrieval, Zero Hallucinations)
+
+#### 1. Turn `llms.txt` into a "Semantic Index" (Not Just Filenames)
+If `llms.txt` only has file names and vague 5-word summaries, the router will miss files whenever your question uses different terminology. Structure each entry like a mini search-index record:
+```markdown
+- URL: https://raw.githubusercontent.com/user/repo/a1b2c3d/docs/auth.md
+  Topic: Authentication, OAuth2, JWT & Session Middleware
+  Keywords/Symbols: verifyToken(), RefreshTokenError, RedisStore, HTTP 401/403
+  Answers: Login flows, token expiration, role-based access control (RBAC)
+  Related/Dependencies: docs/db-schema.md, config/security-env.md
+```
+* **Automate it:** Add a GitHub Action (`on: push`) with a short Python/Node script that parses every Markdown/code file’s `#` headings, exported symbols/functions, and tags to rebuild `llms.txt` automatically on every commit.
+
+#### 2. Use "Hybrid Chunking" Instead of 500 Micro-Files
+If your repo has 400 tiny files (e.g., 1–2 KB each), two bad things happen: `llms.txt` becomes huge and noisy, and retrieving only 3 tiny files often misses surrounding context.
+* **The Fix:** Have your GitHub Action bundle micro-files by feature/module into **30–60 medium-sized files** (e.g., ~20–100 KB each) and index *those* in `llms.txt`.
+* Now `llms.txt` stays super compact, and every URL Gemini fetches in Turn 2 brings complete, self-contained context.
+
+#### 3. Defeat Stale Caching with Commit-Pinned URLs
+Because URL Context checks Google's internal index cache before doing a live fetch (and GitHub's raw CDN caches `/main/` links for ~5 minutes), editing a file doesn't always show up immediately if the URL string stays identical.
+* **The Fix:** Have your GitHub Action write **commit-SHA URLs** inside `llms.txt`:
+  `https://raw.githubusercontent.com/<user>/<repo>/<COMMIT_SHA>/bundle-auth.md`
+* Every time a file changes, its URL in `llms.txt` changes. Google sees a brand-new URL, skips any stale index cache, and live-fetches your exact latest version. *(For `llms.txt` itself in System Instructions, you still point to `main/llms.txt`.)*
+
+#### 4. Enforce Strict Router & Grounding Rules
+* **Lower Temperature:** In AI Studio’s right sidebar, set **Temperature to `0.0`–`0.1`** so file selection and factual extraction stay deterministic.
+* **Forbid Early Guessing:** Explicitly ban Gemini from answering in Turn 1 from memory or from the 1-line summaries inside `llms.txt`.
+* **Always Fetch Dependencies (Top 3–5 URLs):** Tell Gemini to include any linked `Related/Dependencies` URLs (like schemas, config files, or shared types) alongside the primary match—up to the 20-URL per-request cap.
+* **Allow a Turn-3 Re-Route:** Instruct Gemini: *"If the fetched files don't fully answer the question, tell me which 1–2 additional URLs from `llms.txt` you need instead of guessing."*
+
+---
+
+### Part 2: Optimizing UX (Removing the Copy-Paste Friction)
+
+#### 1. The "1-Click Copy Code Block" Trick
+The biggest annoyance in Method 2 is dragging your mouse to copy 4 separate URLs. In Google AI Studio, any Markdown fenced code block gets a **1-click Copy icon** in the corner.
+
+Instruct Gemini to output Turn 1's requested URLs inside a **single plain `text` code block** (no markdown `[link](url)` formatting, no bullets—just raw `https://...` URLs) *plus* your Turn 2 instruction right inside the same block:
+
+```text
+https://raw.githubusercontent.com/user/repo/a1b2c3d/docs/auth.md
+https://raw.githubusercontent.com/user/repo/a1b2c3d/docs/db-schema.md
+
+Read the full contents of every URL above via URL context and answer my previous question thoroughly with exact file/section citations.
+```
+* **Your workflow becomes:** Ask question → Click **Copy** on the code block → **Ctrl+V** → **Enter**. It cuts Turn 2 down to ~2 seconds.
+
+#### 2. The "80/20 Hot Cache" Hybrid (Makes Most Queries 1-Turn!)
+You get **20 URL slots per request**, and `llms.txt` only uses **1 slot**. Don't waste the other 19!
+* Put `llms.txt` **plus your 5–8 most frequently needed "core" files** (e.g., `README.md`, `architecture.md`, `api-overview.md`, `glossary.md`) directly into **System Instructions**.
+* Tell Gemini: *"If the pre-loaded Core URLs fully answer the question, answer immediately in Turn 1. ONLY output the code block requesting extra URLs from `llms.txt` when specialized files are needed."*
+* **Result:** ~70–80% of everyday questions answer instantly in **1 turn** (like Method 1), and deep/niche questions seamlessly invoke the **2-turn router** (like Method 2).
+
+#### 3. Stay in Topic Threads, Reset Between Topics
+* Once you paste URLs in Turn 2, their content remains in the conversation history for Turn 3, Turn 4, etc.—so follow-up questions on the same feature don't require re-pasting URLs.
+* When switching to a completely unrelated part of your repo, open a fresh chat from your **Saved Prompt Template** so old documents don't pollute the active context.
+
+---
+
+### Copy-Paste System Instructions Template
+
+Save this in a Google AI Studio Prompt with **URL context** toggled **ON** and **Temperature = `0.1`**:
+
+```markdown
+You are a strict, retrieval-grounded assistant for my knowledge base.
+
+### Always-Loaded Core Sources (Read via URL context)
+- Index: https://raw.githubusercontent.com/<USER>/<REPO>/main/llms.txt
+- Core Overview: https://raw.githubusercontent.com/<USER>/<REPO>/main/docs/overview.md
+- Core Schema/Glossary: https://raw.githubusercontent.com/<USER>/<REPO>/main/docs/glossary.md
+
+### Workflow Rules
+1. Check the pre-loaded Core Sources first. If they completely and unambiguously answer the user's question, answer immediately and cite the exact file/URL.
+2. If the answer requires files listed in `llms.txt` that are NOT pre-loaded above:
+   - DO NOT answer or guess from `llms.txt` summaries or your own memory.
+   - Select the 2 to 5 most relevant URLs from `llms.txt` (including any listed dependency files).
+   - Output a brief 1-line note explaining why you need them, followed by a SINGLE fenced `text` code block containing ONLY the raw `https://...` URLs (one per line) and the instruction line below at the bottom of the block:
+     `Read every URL above via URL context and answer my question thoroughly with citations.`
+3. Once those URLs are provided in the next turn, read them completely before answering. If a URL fails to load or lacks the answer, state that explicitly and request any missing URLs from `llms.txt`.
 ```
 
-### Quick Checklist After Pasting
-1. **Save** the Apps Script (`Ctrl + S` / Save icon).
-2. Make sure you also update **`.github/workflows/build-pdfs.yml`** in `AI-Studio-pdf-worker` with the `actions/cache@v4` version from the previous message.
-3. Want to test it right away without waiting 4 hours? Select **`flushPendingPdfsNow`** from the Run dropdown in Apps Script and tap **Run**. *(Once the first cached GitHub run finishes, every run after that restores all packages from cache!)*
-
 ---
 
 ## User
 
-Should I update version in apps script?
+Can we combine method 1 and method 2 to balance their respective weaknesses in one architecture?
 
 ---
 
 ## Model
 
-**No—you don't need to update the deployment version for this change**, and here is why:
+Yes—in fact, combining them into a **"Tiered Hybrid" (Hot Bundles + Cold Router)** is the strongest no-API RAG architecture you can build in Google AI Studio.
 
-* **Time-driven triggers (`syncCleanMarkdown`) and manual runs (`flushPendingPdfsNow`)** always execute your latest saved code automatically as soon as you hit Save.
-* **Your Web App deployment (`doPost`)** only runs the pinned deployment version—**but we didn't change a single line of `doPost`**, `getSecrets_`, or `PDF_FOLDER_NAME`, so your existing `GAS_WEBHOOK_URL` will keep working identically as-is.
-
-### If You Still Want to Sync the Version (Optional)
-Just watch out for one classic Apps Script trap so you don't break your GitHub Secret:
-* **Do NOT click `Deploy → New deployment`** (that generates a brand-new URL and breaks `GAS_WEBHOOK_URL` in GitHub).
-* Instead, go to **`Deploy → Manage deployments → Edit (pencil icon ✏️) → Version: New version → Deploy`**. That updates your code version while keeping the **exact same Web App URL** [1.1.1, 1.1.2].
+Instead of choosing between *"load everything upfront"* (Method 1) and *"load nothing until Turn 2"* (Method 2), you merge **both** ideas in two ways:
+1. **Tier 1 (Method 1 style):** Pre-load a few **Hot Bundles** directly in System Instructions for 1-turn speed.
+2. **Tier 2 (Method 2 + Method 1 style):** Don't index 500 tiny raw files in `llms.txt`—index **Cold Bundles** (sharded topic files) so even Turn-2 retrieval benefits from Method 1's bundling!
 
 ---
 
-## User
+### How the Hybrid Architecture Works
 
-Updated it
+```text
+                [ Google AI Studio System Instructions ]
+                ├── 1. llms.txt (Semantic index of Tier 2 Cold Bundles)
+                └── 2. 4–6 Tier 1 "Hot Bundles" (Core / Active / Recent docs)
+                                      │
+                             User asks question
+                                      │
+          ┌───────────────────────────┴───────────────────────────┐
+          ▼                                                       ▼
+   Answered by Hot Bundles?                              Needs deep/niche info?
+          │                                                       │
+          ▼                                                       ▼
+  [ 1-Turn Instant Answer ]                        [ Turn 1: Output 1-Click Copy
+   (Zero copy-paste UX)                              block with 2–4 Cold Bundle URLs ]
+                                                                  │
+                                                                  ▼
+                                                   [ Turn 2: Paste → Full Answer ]
+```
 
----
-
-## Model
-
-Awesome! Here is a quick verification tip, and then we’re ready for the **storage & `ai-kb` sync** step:
-
-### 1. Quick Compute Check
-* Run **`flushPendingPdfsNow`** once in Apps Script (if you have any un-built PDFs) and check the **Actions** tab in `AI-Studio-pdf-worker`.
-* *Note:* The **first** run takes normal time while saving the cache; from the **second** run onward, it restores apt/pip/MathJax from cache and stays fast (and runs at most every 4 hours after 25 min idle).
-
----
-
-### 2. Next Up: Storage & Connecting to `ai-kb` (at 50 Chats/Day)
-Because your Apps Script **already** builds clean `.md` files in Drive every 15 minutes (using 0 GitHub minutes!) and can read your Drive folders (`Maths`, `Reasoning`, `General Awareness`, `English`), we can push `.md` files straight from Drive to `inikashx-hub/ai-kb` in batched commits.
-
-Before writing that sync, decide how you want to handle the **50 chats/day (~67.5 MB/month)** volume inside `ai-kb` so your RAG packs don't overflow the 20-URL / 35 KB limits:
-
-* **Choice A — Selective Sync (Simplest):**
-  Keep all 50 chats/day in Drive (`AI Studio Markdown` + `AI Studio PDF`), and only auto-push **selected folders** or chats tagged **`[kb]`** into `ai-kb` (also keeps any `Private/` folder off your public repo).
-* **Choice B — Auto-Distill Before Sync (Best Long-Term for URL Context):**
-  Keep full 10k-token chats in Drive, and distill each chat into a **crisp 2–4 KB takeaway/cheat-sheet `.md`** before pushing to `ai-kb`—shrinking storage by **~15×** so 1-turn packs stay fast for months.
-* **Choice C — Sync All 50 Raw Chats/Day (High-Volume Setup):**
-  Push all study folders into `ai-kb` bucketed by **Subject + Month** (`chats/maths-2026-11/`), upgrade `build-kb.py` to a **2-level index (`llms.txt` → `llms-maths.txt`)**, and run `build-kb.yml` on a **6-hour schedule** instead of every commit so `.git` history doesn't bloat.
-
-Which path (`A`, `B`, or `C`) fits your daily study style best?
+#### Why This Cancels Out Both Methods' Weaknesses
+* **Fixes Method 2’s UX Friction:** Daily questions (core architecture, conventions, active sprint work, glossary) hit **Tier 1 Hot Bundles** and resolve in **1 turn**.
+* **Fixes Method 2’s Routing Misses:** Because **Tier 2** is *also* pre-bundled into ~20–50 medium topic chunks (instead of 500 tiny files), `llms.txt` stays short, sharp, and much harder for the router to misread.
+* **Fixes Method 1’s Context Bloat & 20-URL Cap:** Massive archives, legacy modules, logs, and deep reference docs stay out of context in **Tier 2** until actually needed—keeping answers fast and focused.
 
 ---
 
-## User
+### How to Set Up the GitHub Pipeline
 
-Compare the 3 choices across various parameters
+You only need one **GitHub Action** (`on: push`) that splits your repository into two tiers automatically:
+
+#### 1. Define What Goes into "Hot" vs. "Cold"
+Pick whichever rule fits your workflow best:
+* **By Folder / Tag:** Anything in `/core/` (or Markdown files with `tier: hot` in YAML frontmatter) merges into Tier 1. Everything else merges by directory into Tier 2 Cold Bundles.
+* **By Recency ("Active Working Set"):** Have your GitHub Action bundle **all files edited in the last 14–30 days** (`git log`) into `hot-recent.md`, plus permanent essentials into `hot-core.md`. *(This is huge for active projects—whatever you're actively working on is always 1-turn!)*.
+
+#### 2. Watch Your "20-URL Budget" Math
+Remember that Google AI Studio enforces a limit of **20 URLs per request**. Because System Instructions are sent with every turn, you must leave headroom for Turn 2:
+* `1 URL`: `llms.txt` (in System Instructions)
+* `4–6 URLs`: Tier 1 Hot Bundles (in System Instructions)
+* **Remaining headroom (`13–15 URLs`)**: Safely available for Turn 2 Cold Bundle fetches + any extra links you paste mid-chat.
+
+*(Avoid putting 15+ URLs into System Instructions, or you'll leave almost no room for Turn 2 retrieval.)*
+
+#### 3. Keep `llms.txt` Lean by Excluding Tier 1
+Inside `llms.txt`, **only index Tier 2 Cold Bundles** (and optionally note at the top: *"Core architecture, glossary, and recent changes are already pre-loaded in Tier 1"*). That prevents Gemini from wasting Turn 2 fetching a file it already has in System Instructions.
 
 ---
 
-## Model
+### Power-User Upgrade: "Role-Sliced Prompts" on One Repo
+Because your GitHub Action already builds modular bundles, you can save **2 or 3 different AI Studio Prompt Templates** pointing to the *same* repository:
+* **Prompt A ("Backend Expert"):** Tier 1 = `hot-core.md` + `bundle-api.md` + `bundle-db.md` + `llms.txt`
+* **Prompt B ("Frontend Expert"):** Tier 1 = `hot-core.md` + `bundle-ui.md` + `bundle-state.md` + `llms.txt`
 
-Here is a head-to-head comparison of **Choice A**, **Choice B**, and **Choice C** tailored specifically to your **50 chats/day (10k tokens each)** Banking-exam workflow:
+Each prompt stays super light and instant for its primary domain, yet can still cross over into the other domain via `llms.txt` whenever needed.
 
 ---
 
-### Side-by-Side Comparison
+### Final Comparison
 
-| Parameter | **Choice A: Selective Sync** *(Tag / Folder Filter)* | **Choice B: Auto-Distill** *(10k → ~3 KB Notes)* | **Choice C: Full Raw 50/Day Sync** *(Monthly Shards + 2-Level Index)* |
+| Dimension | Pure Method 1 | Pure Method 2 | Tiered Hybrid (1 + 2) |
 | :--- | :--- | :--- | :--- |
-| **Monthly `ai-kb` Growth** | **~5–15 MB / month** *(depends on how many you tag)* | **~4.5 MB / month** *(~15× smaller than raw)* | **~67.5 MB / month** raw + bundle churn |
-| **Git History Bloat Risk** | **Very Low** | **Very Low** | **High** *(needs 6-hr `cron` rebuilds + annual repo rotation)* |
-| **1-Turn Pack Compatibility** | **High** *(packs stay small for months)* | **Highest** *(hundreds of distilled chats fit in 1–3 URLs)* | **Low** *(subject packs overflow 20 URLs unless split by month)* |
-| **Turns Needed at Scale** | **1 Turn** (for packs) / **2 Turns** (`llms.txt`) | **1 Turn** (for almost everything) | **2 Turns** (within a subject index) / **3 Turns** (cross-month search) |
-| **Detail & Recall Accuracy** | **100% verbatim** on synced chats *(0% on unsynced)* | **High for concepts/tricks**, drops specific raw Q&As | **100% verbatim** across all 50 chats/day *(but noisy)* |
-| **Privacy Risk (Public Repo)** | **Very Low** *(only approved folders/tags leave Drive)* | **Medium** *(automated summaries could leak private topics unless filtered)* | **Highest** *(all non-excluded chats go public)* |
-| **Needs Gemini API Key?** | **No (100% No-API)** | **Yes** *(for automated background distilling)* — *or manual end-of-chat prompt* | **No (100% No-API)** |
-| **Daily Manual Effort** | **Low** *(tag `[kb]` or drop into `KB/` folder)* | **Zero** *(if automated)* | **Zero** *(just organize folders or let auto-router sort)* |
-| **Repo Lifespan Before Reset** | **1.5 – 3+ years** | **2 – 4+ years** | **~4 – 6 months** before rotating (`ai-kb-2026`, `ai-kb-2027`) |
-
----
-
-### How They Compare on the 5 Things That Matter Most
-
-#### 1. Exam-Prep Accuracy (`Maths / Reasoning` vs. `General Awareness`)
-* **Choice B (Distill)** is **best for Maths, Reasoning & English rules**: In a 10k-token *Percentages* practice session, ~80% is trial-and-error chatter. Distilling keeps the **formulas, shortcuts, and mistakes you made**, giving Gemini super clean, noise-free context. *However*, it loses exact wording of individual GA MCQs or edge-case practice problems.
-* **Choice C (Full Raw)** keeps **every single question and step verbatim**, which helps if you later want to re-find a specific practice problem—but that extra chatter fills up your 35 KB URL chunks fast.
-* **Choice A (Selective)** gives you **full verbatim fidelity** on the chats that actually matter (concept sessions, GA compendiums, revision notes) while ignoring throwaway practice drills.
-
-#### 2. The Hidden "No-API" Catch in Choice B
-* Remember you originally wanted **no API usage**.
-* **Automated** distillation of 50 chats/day requires calling an LLM API (like Gemini API free tier) inside Apps Script or GitHub Actions.
-* **Zero-API workaround for Choice B:** Before ending a long study chat in AI Studio, you can ask `"Summarize all formulas, shortcuts, and traps from this chat into a clean cheat sheet"` and only sync *that*—or stick with Choice A / C for pure zero-API automation.
-
-#### 3. 1-Turn Speed vs. Multi-Turn Search
-* Because **Choice A and B** keep each subject small, your static **`packs/`** stay under ~5–8 URLs for months—keeping **true 1-Turn answers** alive.
-* In **Choice C**, `Maths` alone grows by ~10–15 MB/month (~300–450 URL chunks/month!). You can’t load 300 URLs in 1 turn, so you must split into `maths-2026-11`, `maths-2026-12` and navigate via **`llms.txt` → `llms-maths.txt` → Cold Bundle** (2–3 turns).
-
-#### 4. Privacy & Public Repo Safety
-* **Choice A** is the safest: your private/personal chats stay in Google Drive by default, and **only** study folders or `[kb]`-tagged chats ever touch your public `ai-kb` repo.
-* **Choice C** pushes almost everything by default unless you maintain a strict blocklist.
-
-#### 5. Repo Maintenance Over 6–12 Months
-* **Choice A & B** keep `ai-kb` compact and fast for years.
-* **Choice C** forces two extra safeguards: switching `build-kb.yml` from `on: push` to a **6-hour `cron` schedule** (to avoid 50×/day `.git` bundle rewrites) and starting a fresh archive repo every ~6 months.
-
----
-
-### Practical Recommendation for Your Setup
-For Banking prep with **50 chats/day** and **zero APIs**, the sweet spot is **Choice A (Folder/Tag Selective Sync)** paired with your **Drive archive**:
-1. Let your **Apps Script** keep converting **all 50 chats/day** into clean `.md` + `.pdf` privately inside Google Drive.
-2. Auto-push **only** specific study folders (or chats with `[kb]` in the name, plus your GA compendiums) from Apps Script into `ai-kb` in **4-hour batches**—giving you **1-Turn speed**, **100% privacy control**, and **zero repo bloat**.
-3. *(If you ever want to search one of your 10,000 raw non-`[kb]` practice sessions later, you already have all of them neatly archived as clean `.md` and `.pdf` in Drive—or batchable into NotebookLM anytime.)*
-
-Which one (`A`, `B`, or `C`) do you want to implement?
+| **Routine Questions** | 1 turn | 2 turns | **1 turn** (~80% of the time) |
+| **Deep / Niche Questions** | Fails past 20 URLs / context cap | 2 turns (risk of missing micro-files) | **2 turns** (high accuracy via bundled shards) |
+| **Context Speed** | Slow (everything loaded) | Fast | **Fast** (small hot core + lazy cold load) |
+| **Max Repo Size** | Medium | Unlimited | **Unlimited** |
+| **Maintenance** | 1 Action (Bundler) | 1 Action (Indexer) | **1 Action** (Does both in one pass) |
 
 ---
 
 ## User
 
-Choice A
+Give me a step by step guide to set up GitHub essentials for the hybrid
 
 ---
 
 ## Model
 
-Let's implement **Choice A (Selective Sync)**.
-
-Every 15 minutes, Apps Script will continue building clean `.md` files privately in Google Drive for **all 50 chats/day**. Then, in **4-hour batches** (after 15 minutes of idle time), it will push **only** selected study chats into `inikashx-hub/ai-kb` in **one single batched Git commit** (so `build-kb.yml` only rebuilds once per batch, keeping `.git` history tiny).
+Here is a complete, step-by-step guide to setting up the **GitHub backend** for the **Tiered Hybrid** architecture. Once configured, every `git push` automatically builds your **Tier 1 Hot Bundles**, **Tier 2 Cold Bundles**, and **`llms.txt` Semantic Index**—with zero external dependencies or API keys.
 
 ---
 
-### How You Control What Goes to `ai-kb`
-Any chat stays **100% private in Google Drive** *unless* it matches one of these simple rules:
-1. **Tag in filename:** Add **`[kb]`** anywhere in the chat title/filename (e.g., `Percentages Tricks [kb]`) → syncs to `chats/<your-subject-folder>/...` in `ai-kb` (the `[kb]` tag is automatically stripped from the GitHub filename).
-2. **Core cheat sheets:** Add **`[core]`** in the filename (e.g., `Math Formulas [core]`) → syncs to `core/` in `ai-kb` (always loaded in Tier 1 `hot-core.md`).
-3. **Or use a `KB` folder:** Put files inside a folder named **`KB`** inside your AI Studio folder (e.g., `Google AI Studio/KB/Maths/...` or `Google AI Studio/KB/core/...`) → auto-syncs everything inside `KB/` without needing `[kb]` in every filename.
+### Step 1: Create a Public Repo with This Folder Structure
+URL Context requires publicly accessible URLs, so make sure the repository is **Public** (do not store secrets or private data).
+
+Create this folder layout:
+```text
+my-ai-kb/
+├── kb/                          # Put all your notes, docs, and code here
+│   ├── core/                    # Tier 1: Always pre-loaded (1-turn answers)
+│   │   ├── architecture.md
+│   │   └── glossary.md
+│   ├── backend/                 # Tier 2: Auto-bundled into cold-backend.<hash>.md
+│   │   ├── auth.md
+│   │   └── billing.md
+│   └── frontend/                # Tier 2: Auto-bundled into cold-frontend.<hash>.md
+│       └── state.md
+├── scripts/
+│   └── build_kb.py              # The builder script (Step 2)
+└── .github/
+    └── workflows/
+        └── build-kb.yml         # The GitHub Action (Step 3)
+```
+
+> **Tip for better routing accuracy:** You can optionally add simple YAML frontmatter to the top of any Markdown file to help `llms.txt` route questions accurately (or force a non-`core/` file into Tier 1):
+> ```markdown
+> ---
+> tier: hot          # Optional: promotes this file into hot-core.md
+> summary: Explains Stripe webhook verification and retry backoff rules.
+> keywords: stripe, webhook, 400, idempotency, signature
+> ---
+> ```
 
 ---
 
-### Step 1: Give Apps Script Write Access to `ai-kb` (Important!)
-In Apps Script → **Project Settings → Script Properties**, check your `GITHUB_TOKEN`:
-* If your `GITHUB_TOKEN` is a fine-grained token scoped **only** to `AI-Studio-pdf-worker`, either:
-  * **Option 1:** Edit that token on GitHub to also grant **Contents: Read and write** on **`ai-kb`**, **OR**
-  * **Option 2:** Create a second fine-grained token for `ai-kb` (**Contents: Read and write**) and add it to Script Properties as **`AI_KB_TOKEN`** (the script checks `AI_KB_TOKEN` first and falls back to `GITHUB_TOKEN`).
+### Step 2: Add the Builder Script (`scripts/build_kb.py`)
+This standard-library Python script does four critical things automatically:
+1. Bundles `kb/core/` (and any `tier: hot` file) into **`_ai_bundles/hot-core.md`**.
+2. Bundles any file modified in the **last 14 days** (`git log`) into **`_ai_bundles/hot-recent.md`**.
+3. Groups everything else by subfolder into **Tier 2 Cold Bundles** (splitting at ~180 KB per file so Turn 2 stays fast) using **content-hashed filenames** (`cold-backend.a1b2c3d4.md`) so neither GitHub’s CDN nor Google’s URL Context serves stale versions.
+4. Generates **`_ai_bundles/llms.txt`** by extracting file paths, frontmatter summaries/keywords, and Markdown `#` / `##` headings.
 
----
+Create **`scripts/build_kb.py`**:
 
-### Step 2: Replace Your Google Apps Script with This Complete Code
-Select all, delete your old script, paste this in, and save (`syncCleanMarkdown` stays on your existing 15-minute trigger, and you get a new **`flushKbSyncNow()`** function if you ever want an immediate push to `ai-kb`!):
+```python
+import hashlib
+import os
+import re
+import shutil
+import subprocess
+from pathlib import Path
 
-```javascript
-/**
- * Syncs AI Studio chats -> Clean .md in Drive -> Batched Private PDFs + Selective Batched Public KB Sync (Choice A)
- * Reads GITHUB_TOKEN, CALLBACK_SECRET, and optional AI_KB_TOKEN from Project Settings -> Script Properties.
- */
-const CONFIG = {
-  SOURCE_FOLDER_NAMES: ['Google AI Studio', 'AI Studio'],
-  MD_FOLDER_NAME: 'AI Studio Markdown',
-  PDF_FOLDER_NAME: 'AI Studio PDF',
+KB_DIR = Path("kb")
+OUT_DIR = Path("_ai_bundles")
+COLD_DIR = OUT_DIR / "cold"
 
-  // Private PDF Worker Repo
-  GITHUB_OWNER: 'inikashx-hub',
-  GITHUB_REPO: 'AI-Studio-pdf-worker',
-  GITHUB_BRANCH: 'main',
+ALLOWED_EXTS = {".md", ".txt", ".json", ".yaml", ".yml", ".csv", ".py", ".ts", ".js"}
+MAX_COLD_BYTES = 180_000  # ~45k tokens max per Cold Bundle
+RECENT_DAYS = 14
 
-  // Public Selective Knowledge Base Repo (Choice A)
-  KB_GITHUB_OWNER: 'inikashx-hub',
-  KB_GITHUB_REPO: 'ai-kb',
-  KB_GITHUB_BRANCH: 'main',
-  KB_FOLDER_NAME: 'KB',
-  KB_TAG_REGEX: /\[kb\]/i,
-  KB_CORE_TAG_REGEX: /\[core\]/i,
-  KB_IDLE_MINUTES: 15,        // Wait 15 min idle before pushing to ai-kb
-  KB_BATCH_HOURS: 4,          // Push batched commit to ai-kb at most every 4 hours
-  KB_MAX_BATCH_FILES: 25,
+REPO = os.environ.get("GITHUB_REPOSITORY", "YOUR_USERNAME/YOUR_REPO")
+BRANCH = os.environ.get("GITHUB_REF_NAME", "main")
+RAW_BASE = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}"
 
-  INCLUDE_THOUGHTS: false,
-  INCLUDE_METADATA: true,
-  STATE_PREFIX: 'gh_sync_',
-  SCAN_STATE_KEY: 'gh_last_scan_ms',
-  DISPATCH_STATE_KEY: 'gh_last_pdf_dispatch_ms',
-  KB_DISPATCH_STATE_KEY: 'gh_last_kb_dispatch_ms',
+def get_recent_files(days: int) -> set[Path]:
+    try:
+        out = subprocess.check_output(
+            ["git", "log", f"--since={days} days ago", "--name-only", "--pretty=format:", "--", str(KB_DIR)],
+            text=True,
+        )
+        return {Path(line.strip()) for line in out.splitlines() if line.strip()}
+    except Exception:
+        return set()
 
-  PDF_IDLE_MINUTES: 25,       // Only build PDF after chat has been idle for 25 min
-  PDF_BATCH_HOURS: 4,         // Trigger GitHub PDF batch at most every 4 hours (max 6x/day)
-  MAX_SINGLE_PDF_BYTES: 15 * 1024 * 1024
-};
+def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
+    if not match:
+        return {}, text
+    meta = {}
+    for line in match.group(1).splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            meta[k.strip().lower()] = v.strip()
+    return meta, text[match.end() :]
 
-function getSecrets_() {
-  const props = PropertiesService.getScriptProperties();
-  const token = (props.getProperty('GITHUB_TOKEN') || '').trim();
-  const kbToken = (props.getProperty('AI_KB_TOKEN') || token).trim();
-  const secret = (props.getProperty('CALLBACK_SECRET') || '').trim();
-  if (!token || !secret) {
-    throw new Error('Missing GITHUB_TOKEN or CALLBACK_SECRET in Project Settings -> Script Properties.');
-  }
-  return { token, kbToken, secret };
-}
+def extract_headings(text: str, limit: int = 12) -> list[str]:
+    headings = re.findall(r"^#{1,2}\s+(.+)$", text, re.MULTILINE)
+    cleaned = [h.strip().replace("\n", " ") for h in headings]
+    return cleaned[:limit]
 
-function hashTurns_(turns) {
-  const raw = JSON.stringify(turns);
-  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, raw, Utilities.Charset.UTF_8);
-  return digest.map(b => ('0' + ((b & 0xff).toString(16))).slice(-2)).join('');
-}
+def format_file_block(rel_path: Path, body: str) -> str:
+    return f"\n\n---\n## FILE: `{rel_path.as_posix()}`\n\n{body.strip()}\n"
 
-function syncCleanMarkdown() {
-  syncCleanMarkdown_(false, false);
-}
+def write_cold_chunks(group_name: str, items: list[dict]) -> list[dict]:
+    chunks = []
+    current_blocks = []
+    current_meta = []
+    current_size = 0
 
-// Run manually anytime you want pending PDFs built immediately
-function flushPendingPdfsNow() {
-  syncCleanMarkdown_(true, false);
-}
+    for item in items:
+        block = format_file_block(item["path"], item["body"])
+        block_size = len(block.encode("utf-8"))
+        if current_blocks and (current_size + block_size > MAX_COLD_BYTES):
+            chunks.append((current_blocks, current_meta))
+            current_blocks, current_meta, current_size = [], [], 0
+        current_blocks.append(block)
+        current_meta.append(item)
+        current_size += block_size
 
-// Run manually anytime you want [kb] / [core] chats pushed to ai-kb immediately
-function flushKbSyncNow() {
-  syncCleanMarkdown_(false, true);
-}
+    if current_blocks:
+        chunks.append((current_blocks, current_meta))
 
-function syncCleanMarkdown_(forcePdfFlush, forceKbFlush) {
-  const cache = CacheService.getScriptCache();
-  if (cache.get('gh_sync_running')) return;
-  cache.put('gh_sync_running', '1', 300);
+    written = []
+    for idx, (blocks, metas) in enumerate(chunks, start=1):
+        suffix = f"-part{idx}" if len(chunks) > 1 else ""
+        content = f"# Cold Knowledge Bundle: {group_name}{suffix}\n" + "".join(blocks)
+        short_hash = hashlib.md5(content.encode("utf-8")).hexdigest()[:8]
+        filename = f"cold-{group_name}{suffix}.{short_hash}.md"
+        (COLD_DIR / filename).write_text(content, encoding="utf-8")
 
-  const startTime = Date.now();
-  const fullScan = forcePdfFlush || forceKbFlush;
+        all_headings = []
+        summaries = []
+        keywords = []
+        for m in metas:
+            all_headings.extend(m["headings"])
+            if m["summary"]:
+                summaries.append(m["summary"])
+            if m["keywords"]:
+                keywords.append(m["keywords"])
 
-  try {
-    const { token, kbToken } = getSecrets_();
-    const mdFolder = getOrCreateFolder_(CONFIG.MD_FOLDER_NAME);
-    const pdfFolder = getOrCreateFolder_(CONFIG.PDF_FOLDER_NAME);
-    const visited = new Set([mdFolder.getId(), pdfFolder.getId()]);
-
-    const props = PropertiesService.getScriptProperties();
-    const lastScanMs = Number(props.getProperty(CONFIG.SCAN_STATE_KEY) || 0);
-    const sinceIso = (!fullScan && lastScanMs > 0)
-      ? new Date(lastScanMs - 5 * 60 * 1000).toISOString()
-      : '';
-
-    const files = [];
-    for (const f of getSourceFolders_()) collectFiles_(f, visited, files, sinceIso);
-
-    const seen = new Set(files.map(f => f.getId()));
-    try {
-      const baseQ = 'mimeType = "application/vnd.google-makersuite.prompt" and trashed = false';
-      const fullQ = sinceIso ? `${baseQ} and modifiedDate > "${sinceIso}"` : baseQ;
-      const q = DriveApp.searchFiles(fullQ);
-      while (q.hasNext()) {
-        const pf = q.next();
-        if (!seen.has(pf.getId())) { seen.add(pf.getId()); files.push(pf); }
-      }
-    } catch (e) {}
-
-    const stateMap = props.getProperties();
-    let mdCount = 0, queuedPdfCount = 0, kbSyncedCount = 0, paused = false;
-
-    // PHASE 1: Fast Markdown sync in Drive (0 GitHub minutes)
-    for (const file of files) {
-      if (Date.now() - startTime > 120000) { paused = true; break; }
-      if (file.isTrashed()) continue;
-      const mime = file.getMimeType();
-      if (mime.startsWith('application/vnd.google-apps.') || mime.startsWith('image/') ||
-          mime.startsWith('video/') || mime.startsWith('audio/') || mime === 'application/pdf') continue;
-      if (file.getSize() > 15 * 1024 * 1024) continue;
-
-      const id = file.getId();
-      const updatedMs = file.getLastUpdated().getTime();
-      const key = CONFIG.STATE_PREFIX + id;
-      let prev = {};
-      if (stateMap[key]) { try { prev = JSON.parse(stateMap[key]); } catch (e) {} }
-
-      const targetKbPath = resolveKbTarget_(file, cleanName_(file.getName()));
-      const needsMd = prev.t !== updatedMs || !prev.m;
-      const needsKbPathSync = (targetKbPath || '') !== (prev.kbP || '');
-      if (!needsMd && !needsKbPathSync) continue;
-
-      if (needsMd) {
-        let data;
-        try { data = JSON.parse(file.getBlob().getDataAsString('UTF-8')); } catch (e) { continue; }
-        if (!data || (!data.chunkedPrompt && !data.contents && !data.runSettings)) continue;
-
-        const chat = extractCleanChat_(data, file);
-        const baseName = cleanName_(file.getName());
-        const mdName = `${baseName}.md`;
-        const fullMdText = renderCleanMd_(chat);
-
-        let mdId = prev.m || null;
-        if (!mdId) {
-          const byName = mdFolder.getFilesByName(mdName);
-          while (byName.hasNext()) {
-            const ef = byName.next();
-            if (!ef.isTrashed()) { mdId = ef.getId(); break; }
-          }
-        }
-        let updated = false;
-        if (mdId) {
-          try {
-            const ex = DriveApp.getFileById(mdId);
-            if (!ex.isTrashed()) {
-              ex.setContent(fullMdText);
-              if (ex.getName() !== mdName) ex.setName(mdName);
-              updated = true;
+        written.append(
+            {
+                "url": f"{RAW_BASE}/_ai_bundles/cold/{filename}",
+                "group": f"{group_name}{suffix}",
+                "files": [m["path"].as_posix() for m in metas],
+                "headings": all_headings[:15],
+                "summaries": summaries,
+                "keywords": keywords,
             }
-          } catch (e) {}
-        }
-        if (!updated) mdId = mdFolder.createFile(Utilities.newBlob(fullMdText, 'text/markdown', mdName)).getId();
+        )
+    return written
 
-        prev.t = updatedMs;
-        prev.m = mdId;
-        mdCount++;
-      }
+def main():
+    if not KB_DIR.exists():
+        raise SystemExit("Missing 'kb/' directory.")
 
-      if (targetKbPath) prev.kbTarget = targetKbPath;
-      else delete prev.kbTarget;
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(COLD_DIR, ignore_errors=True)
+    COLD_DIR.mkdir(parents=True, exist_ok=True)
 
-      saveStateKey_(props, stateMap, key, prev);
-    }
+    recent_paths = get_recent_files(RECENT_DAYS)
+    hot_core_blocks = []
+    hot_recent_blocks = []
+    cold_groups: dict[str, list[dict]] = {}
 
-    if (!paused) {
-      props.setProperty(CONFIG.SCAN_STATE_KEY, String(startTime));
-    }
+    for path in sorted(KB_DIR.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in ALLOWED_EXTS:
+            continue
 
-    // PHASE 2: Batched + Idle-Debounced Private PDF Queueing
-    const lastPdfMs = Number(props.getProperty(CONFIG.DISPATCH_STATE_KEY) || 0);
-    const canDispatchPdf = forcePdfFlush || (Date.now() - lastPdfMs >= CONFIG.PDF_BATCH_HOURS * 60 * 60 * 1000);
-    const pdfIdleMs = CONFIG.PDF_IDLE_MINUTES * 60 * 1000;
+        raw_text = path.read_text(encoding="utf-8", errors="ignore")
+        meta, body = parse_frontmatter(raw_text)
+        rel_from_kb = path.relative_to(KB_DIR)
+        top_folder = rel_from_kb.parts[0] if len(rel_from_kb.parts) > 1 else "general"
 
-    if (canDispatchPdf && !paused) {
-      for (const key of Object.keys(stateMap)) {
-        if (!key.startsWith(CONFIG.STATE_PREFIX)) continue;
-        if (Date.now() - startTime > 190000) { paused = true; break; }
+        is_hot = (top_folder == "core") or (meta.get("tier") == "hot")
+        block = format_file_block(path, body)
 
-        let prev = {};
-        try { prev = JSON.parse(stateMap[key]); } catch (e) { continue; }
-        if (!prev.t) continue;
+        if is_hot:
+            hot_core_blocks.append(block)
+        else:
+            if path in recent_paths:
+                hot_recent_blocks.append(block)
 
-        const jobInFlight = prev.qa && (Date.now() - prev.qa < 20 * 60 * 1000);
-        const needsPdf = (prev.pt !== prev.t || !prev.p) && !jobInFlight;
-        if (!needsPdf) continue;
-        if (!forcePdfFlush && (Date.now() - prev.t < pdfIdleMs)) continue;
-
-        const id = key.slice(CONFIG.STATE_PREFIX.length);
-        let file;
-        try { file = DriveApp.getFileById(id); } catch (e) { continue; }
-        if (file.isTrashed() || file.getSize() > 15 * 1024 * 1024) continue;
-
-        const updatedMs = file.getLastUpdated().getTime();
-        if (!forcePdfFlush && (Date.now() - updatedMs < pdfIdleMs)) continue;
-
-        let data;
-        try { data = JSON.parse(file.getBlob().getDataAsString('UTF-8')); } catch (e) { continue; }
-        if (!data || (!data.chunkedPrompt && !data.contents && !data.runSettings)) continue;
-
-        const chat = extractCleanChat_(data, file);
-        const baseName = cleanName_(file.getName());
-        const fullMdText = renderCleanMd_(chat);
-
-        const fullTc = chat.turns.length;
-        const fullTh = hashTurns_(chat.turns);
-        let mode = 'full', part = 1, partStartTc = 0, expectedTc = 0, existingPdfId = null;
-        let pdfName = `${baseName}.pdf`, turnsForPdf = chat.turns, jobMdText = fullMdText, skipQueue = false;
-
-        if (prev.p && typeof prev.tc === 'number' && prev.tc > 0 && prev.tc <= fullTc && prev.th) {
-          const prefixHash = hashTurns_(chat.turns.slice(0, prev.tc));
-          if (prefixHash === prev.th) {
-            try {
-              const existingPdf = DriveApp.getFileById(prev.p);
-              if (!existingPdf.isTrashed()) {
-                const curPart = prev.part || 1;
-                const curPdfName = curPart > 1 ? `${baseName} (Part ${curPart}).pdf` : `${baseName}.pdf`;
-                if (fullTc === prev.tc) {
-                  if (existingPdf.getName() !== curPdfName) existingPdf.setName(curPdfName);
-                  prev.pt = updatedMs;
-                  skipQueue = true;
-                } else if (existingPdf.getSize() < CONFIG.MAX_SINGLE_PDF_BYTES) {
-                  mode = 'append'; part = curPart; partStartTc = prev.partStartTc || 0;
-                  expectedTc = prev.tc; existingPdfId = prev.p; pdfName = curPdfName;
-                  turnsForPdf = chat.turns.slice(prev.tc);
-                  jobMdText = renderContinuationMd_(chat, turnsForPdf, prev.tc, fullTc, null);
-                } else {
-                  mode = 'new_part'; part = curPart + 1; partStartTc = prev.tc;
-                  expectedTc = prev.tc; existingPdfId = null; pdfName = `${baseName} (Part ${part}).pdf`;
-                  turnsForPdf = chat.turns.slice(prev.tc);
-                  jobMdText = renderContinuationMd_(chat, turnsForPdf, prev.tc, fullTc, part);
+            cold_groups.setdefault(top_folder, []).append(
+                {
+                    "path": path,
+                    "body": body,
+                    "headings": extract_headings(body),
+                    "summary": meta.get("summary", ""),
+                    "keywords": meta.get("keywords", ""),
                 }
-              }
-            } catch (e) {}
-          }
-        }
+            )
 
-        if (!skipQueue) {
-          const assets = collectAssets_(turnsForPdf);
-          const jobPayload = {
-            sourceId: id, updatedMs, baseName, pdfName, mode, existingPdfId,
-            expectedTc, nextTc: fullTc, nextTh: fullTh, part, partStartTc,
-            mdText: jobMdText, assets
-          };
-          if (pushJobToGitHub_(`jobs/${id}.json`, jobPayload, token)) {
-            prev.qt = updatedMs;
-            prev.qa = Date.now();
-            queuedPdfCount++;
-          }
-        }
-        saveStateKey_(props, stateMap, key, prev);
-      }
+    # Write static Tier 1 Hot Bundles (never 404 even if empty)
+    core_text = (
+        "# Tier 1: Core Knowledge\n" + "".join(hot_core_blocks)
+        if hot_core_blocks
+        else "# Tier 1: Core Knowledge\nNo core files configured yet."
+    )
+    (OUT_DIR / "hot-core.md").write_text(core_text, encoding="utf-8")
 
-      if (queuedPdfCount > 0) {
-        triggerGitHubWorkflow_(token);
-        if (!paused) props.setProperty(CONFIG.DISPATCH_STATE_KEY, String(Date.now()));
-      }
-    }
+    recent_text = (
+        f"# Tier 1: Files Modified in Last {RECENT_DAYS} Days\n" + "".join(hot_recent_blocks)
+        if hot_recent_blocks
+        else f"# Tier 1: Recent Changes\nNo non-core files modified in the last {RECENT_DAYS} days."
+    )
+    (OUT_DIR / "hot-recent.md").write_text(recent_text, encoding="utf-8")
 
-    // PHASE 3: Batched Selective Sync to Public ai-kb Repo (1 single commit for all changed [kb]/[core] files)
-    const lastKbMs = Number(props.getProperty(CONFIG.KB_DISPATCH_STATE_KEY) || 0);
-    const canDispatchKb = forceKbFlush || (Date.now() - lastKbMs >= CONFIG.KB_BATCH_HOURS * 60 * 60 * 1000);
-    const kbIdleMs = CONFIG.KB_IDLE_MINUTES * 60 * 1000;
+    # Write content-hashed Tier 2 Cold Bundles & build llms.txt
+    index_entries = []
+    for group_name, items in sorted(cold_groups.items()):
+        index_entries.extend(write_cold_chunks(group_name, items))
 
-    if (canDispatchKb && !paused) {
-      const kbOps = [];
-      const pendingStateUpdates = [];
+    lines = [
+        "# Knowledge Base Index (Tier 2 Cold Bundles)",
+        "# Note: Core docs and recently modified files (last 14 days) are already pre-loaded in Tier 1.",
+        "",
+    ]
+    for entry in index_entries:
+        lines.append(f"- URL: {entry['url']}")
+        lines.append(f"  Topic Group: {entry['group']}")
+        lines.append(f"  Files: {', '.join(entry['files'])}")
+        if entry["summaries"]:
+            lines.append(f"  Summary: {' | '.join(entry['summaries'])}")
+        if entry["keywords"]:
+            lines.append(f"  Keywords: {', '.join(entry['keywords'])}")
+        if entry["headings"]:
+            lines.append(f"  Headings: {', '.join(entry['headings'])}")
+        lines.append("")
 
-      for (const key of Object.keys(stateMap)) {
-        if (!key.startsWith(CONFIG.STATE_PREFIX)) continue;
-        if (kbOps.length >= CONFIG.KB_MAX_BATCH_FILES) break;
-        if (Date.now() - startTime > 240000) { paused = true; break; }
+    (OUT_DIR / "llms.txt").write_text("\n".join(lines), encoding="utf-8")
+    print(f"Built {len(index_entries)} cold bundle(s) and updated Tier 1 + llms.txt.")
 
-        let prev = {};
-        try { prev = JSON.parse(stateMap[key]); } catch (e) { continue; }
-        if (!prev.t || !prev.m) continue;
+if __name__ == "__main__":
+    main()
+```
 
-        const targetPath = prev.kbTarget || null;
-        const oldPath = prev.kbP || null;
-        if (!targetPath && !oldPath) continue;
-        if (targetPath && prev.kbT === prev.t && oldPath === targetPath) continue;
-        if (!forceKbFlush && (Date.now() - prev.t < kbIdleMs)) continue;
+---
 
-        const id = key.slice(CONFIG.STATE_PREFIX.length);
-        let srcFile;
-        try { srcFile = DriveApp.getFileById(id); } catch (e) { continue; }
+### Step 3: Add the GitHub Action (`.github/workflows/build-kb.yml`)
+Two subtle gotchas are handled here for you:
+1. **`fetch-depth: 0`**: Required so `git log` sees commit history for `hot-recent.md`.
+2. **`paths:` + `[skip ci]`**: Prevents the Action from triggering an infinite commit loop when it pushes `_ai_bundles/`.
 
-        // If source file was trashed or [kb] tag removed, delete old file from ai-kb
-        if (srcFile.isTrashed() || !targetPath) {
-          if (oldPath) {
-            kbOps.push({ path: oldPath, content: null });
-            delete prev.kbP; delete prev.kbT; delete prev.kbTarget;
-            pendingStateUpdates.push({ key, prev });
-          }
-          continue;
-        }
+Create **`.github/workflows/build-kb.yml`**:
 
-        const updatedMs = srcFile.getLastUpdated().getTime();
-        if (!forceKbFlush && (Date.now() - updatedMs < kbIdleMs)) continue;
+```yaml
+name: Build AI Knowledge Bundles
 
-        let mdText = '';
-        try {
-          const mdFile = DriveApp.getFileById(prev.m);
-          if (mdFile.isTrashed()) continue;
-          mdText = mdFile.getBlob().getDataAsString('UTF-8');
-        } catch (e) { continue; }
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "kb/**"
+      - "scripts/build_kb.py"
+  workflow_dispatch:
 
-        if (oldPath && oldPath !== targetPath) {
-          kbOps.push({ path: oldPath, content: null });
-        }
-        kbOps.push({ path: targetPath, content: mdText });
-        prev.kbP = targetPath;
-        prev.kbT = prev.t;
-        pendingStateUpdates.push({ key, prev });
-      }
+permissions:
+  contents: write
 
-      if (kbOps.length > 0) {
-        const pushed = pushBatchToGitHubRepo_(
-          CONFIG.KB_GITHUB_OWNER,
-          CONFIG.KB_GITHUB_REPO,
-          CONFIG.KB_GITHUB_BRANCH,
-          kbOps,
-          `sync: batch update ${kbOps.length} KB file(s) from Drive`,
-          kbToken
-        );
-        if (pushed) {
-          kbSyncedCount = pendingStateUpdates.length;
-          for (const item of pendingStateUpdates) {
-            saveStateKey_(props, stateMap, item.key, item.prev);
-          }
-          if (!paused) props.setProperty(CONFIG.KB_DISPATCH_STATE_KEY, String(Date.now()));
-        }
-      }
-    }
+jobs:
+  build-bundles:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    console.log(paused
-      ? `Paused at time guard. MD: ${mdCount}, PDF queued: ${queuedPdfCount}, KB synced: ${kbSyncedCount}.`
-      : `Done! MD: ${mdCount}, PDF batch queued: ${queuedPdfCount}, ai-kb synced: ${kbSyncedCount}`);
-  } finally {
-    cache.remove('gh_sync_running');
-  }
-}
+      - name: Build Hot/Cold bundles and llms.txt
+        run: python3 scripts/build_kb.py
 
-function saveStateKey_(props, stateMap, key, prev) {
-  const pLock = LockService.getScriptLock();
-  pLock.waitLock(10000);
-  try {
-    let latest = {};
-    const latestRaw = props.getProperty(key);
-    if (latestRaw) { try { latest = JSON.parse(latestRaw); } catch (e) {} }
-    const merged = Object.assign({}, latest, prev);
-    if (!prev.kbP) delete merged.kbP;
-    if (!prev.kbT) delete merged.kbT;
-    if (!prev.kbTarget) delete merged.kbTarget;
-    const serialized = JSON.stringify(merged);
-    props.setProperty(key, serialized);
-    stateMap[key] = serialized;
-  } finally {
-    pLock.releaseLock();
-  }
-}
+      - name: Commit updated bundles
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add _ai_bundles/
+          if git diff --staged --quiet; then
+            echo "No bundle changes to commit."
+          else
+            git commit -m "chore: rebuild AI knowledge bundles [skip ci]"
+            git push
+          fi
+```
 
-function sanitizePathSlug_(name) {
-  return String(name || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'general';
-}
+---
 
-function resolveKbTarget_(file, baseName) {
-  const rawName = file.getName();
-  const isCoreTag = CONFIG.KB_CORE_TAG_REGEX.test(rawName);
-  const isKbTag = CONFIG.KB_TAG_REGEX.test(rawName);
+### Step 4: Verify Permissions & First Build
+1. On GitHub, go to **Settings → Actions → General → Workflow permissions** and ensure **Read and write permissions** is enabled (some accounts restrict write permissions by default even when set in YAML).
+2. Commit and push at least one file inside `kb/` (along with `build_kb.py` and `build-kb.yml`).
+3. Open the **Actions** tab and confirm **Build AI Knowledge Bundles** turns green.
+4. Check your repo root—you will now see `_ai_bundles/` containing `llms.txt`, `hot-core.md`, `hot-recent.md`, and `cold/cold-*.<hash>.md`.
 
-  const chain = [];
-  let cur = file;
-  for (let depth = 0; depth < 6; depth++) {
-    const parents = cur.getParents();
-    if (!parents.hasNext()) break;
-    const parent = parents.next();
-    const pName = parent.getName();
-    if (CONFIG.SOURCE_FOLDER_NAMES.some(n => n.toLowerCase() === pName.toLowerCase())) break;
-    chain.unshift(pName);
-    cur = parent;
-  }
-
-  const kbIdx = chain.findIndex(n => n.toLowerCase() === CONFIG.KB_FOLDER_NAME.toLowerCase());
-  const inKbFolder = kbIdx !== -1;
-  if (!isCoreTag && !isKbTag && !inKbFolder) return null;
-
-  const relFolders = inKbFolder ? chain.slice(kbIdx + 1) : chain;
-  const cleanFile = baseName
-    .replace(/\s*\[(kb|core)\]\s*/gi, ' ')
-    .replace(/[#?%\\/:*|"<>]/g, '_')
-    .replace(/\s+/g, ' ')
-    .trim() || 'Untitled';
-
-  if (isCoreTag || (relFolders.length > 0 && relFolders[0].toLowerCase() === 'core')) {
-    return `core/${cleanFile}.md`;
-  }
-  if (relFolders.length > 0) {
-    const folderPath = relFolders.map(sanitizePathSlug_).join('/');
-    return `chats/${folderPath}/${cleanFile}.md`;
-  }
-  return `chats/${cleanFile}.md`;
-}
-
-function pushBatchToGitHubRepo_(owner, repo, branch, ops, commitMessage, token) {
-  const baseApi = `https://api.github.com/repos/${owner}/${repo}`;
-  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
-
-  const refResp = UrlFetchApp.fetch(`${baseApi}/git/ref/heads/${branch}`, { method: 'get', headers, muteHttpExceptions: true });
-  if (refResp.getResponseCode() !== 200) {
-    console.error(`KB ref fetch failed (${refResp.getResponseCode()}): ${refResp.getContentText()}`);
-    return false;
-  }
-  const headSha = JSON.parse(refResp.getContentText()).object.sha;
-
-  const commitResp = UrlFetchApp.fetch(`${baseApi}/git/commits/${headSha}`, { method: 'get', headers, muteHttpExceptions: true });
-  if (commitResp.getResponseCode() !== 200) {
-    console.error(`KB commit fetch failed (${commitResp.getResponseCode()}): ${commitResp.getContentText()}`);
-    return false;
-  }
-  const baseTreeSha = JSON.parse(commitResp.getContentText()).tree.sha;
-
-  const treeEntries = [];
-  for (const op of ops) {
-    if (op.content === null) {
-      // Only delete if path actually exists on remote branch
-      const chk = UrlFetchApp.fetch(`${baseApi}/contents/${encodeURI(op.path)}?ref=${branch}`, {
-        method: 'get', headers, muteHttpExceptions: true
-      });
-      if (chk.getResponseCode() === 200) {
-        treeEntries.push({ path: op.path, mode: '100644', type: 'blob', sha: null });
-      }
-      continue;
-    }
-    const blobResp = UrlFetchApp.fetch(`${baseApi}/git/blobs`, {
-      method: 'post', contentType: 'application/json', headers,
-      payload: JSON.stringify({ content: op.content, encoding: 'utf-8' }), muteHttpExceptions: true
-    });
-    if (blobResp.getResponseCode() !== 201) {
-      console.error(`KB blob failed (${blobResp.getResponseCode()}): ${blobResp.getContentText()}`);
-      return false;
-    }
-    const blobSha = JSON.parse(blobResp.getContentText()).sha;
-    treeEntries.push({ path: op.path, mode: '100644', type: 'blob', sha: blobSha });
-  }
-
-  if (treeEntries.length === 0) return true;
-
-  const treeResp = UrlFetchApp.fetch(`${baseApi}/git/trees`, {
-    method: 'post', contentType: 'application/json', headers,
-    payload: JSON.stringify({ base_tree: baseTreeSha, tree: treeEntries }), muteHttpExceptions: true
-  });
-  if (treeResp.getResponseCode() !== 201) {
-    console.error(`KB tree failed (${treeResp.getResponseCode()}): ${treeResp.getContentText()}`);
-    return false;
-  }
-  const newTreeSha = JSON.parse(treeResp.getContentText()).sha;
-
-  const newCommitResp = UrlFetchApp.fetch(`${baseApi}/git/commits`, {
-    method: 'post', contentType: 'application/json', headers,
-    payload: JSON.stringify({ message: commitMessage, tree: newTreeSha, parents: [headSha] }), muteHttpExceptions: true
-  });
-  if (newCommitResp.getResponseCode() !== 201) {
-    console.error(`KB commit create failed (${newCommitResp.getResponseCode()}): ${newCommitResp.getContentText()}`);
-    return false;
-  }
-  const newCommitSha = JSON.parse(newCommitResp.getContentText()).sha;
-
-  const patchResp = UrlFetchApp.fetch(`${baseApi}/git/refs/heads/${branch}`, {
-    method: 'patch', contentType: 'application/json', headers,
-    payload: JSON.stringify({ sha: newCommitSha }), muteHttpExceptions: true
-  });
-  if (patchResp.getResponseCode() !== 200) {
-    console.error(`KB ref update failed (${patchResp.getResponseCode()}): ${patchResp.getContentText()}`);
-    return false;
-  }
-  return true;
-}
-
-function collectAssets_(turns) {
-  const assets = [];
-  for (const turn of turns) {
-    for (const item of turn.items) {
-      if (item.type === 'image_b64' && item.data && item.data.length < 7000000) {
-        assets.push({ mimeType: item.mimeType || 'image/png', dataB64: item.data });
-      } else if (item.type === 'image_drive') {
-        try {
-          const blob = DriveApp.getFileById(item.fileId).getBlob();
-          const bytes = blob.getBytes();
-          if (bytes.length < 5 * 1024 * 1024) {
-            assets.push({ mimeType: blob.getContentType() || 'image/png', dataB64: Utilities.base64Encode(bytes) });
-          }
-        } catch (e) {}
-      }
-    }
-  }
-  return assets;
-}
-
-function requeueAllPastChats() {
-  const props = PropertiesService.getScriptProperties();
-  props.deleteProperty(CONFIG.SCAN_STATE_KEY);
-  props.deleteProperty(CONFIG.DISPATCH_STATE_KEY);
-  props.deleteProperty(CONFIG.KB_DISPATCH_STATE_KEY);
-  const all = props.getProperties();
-  let resetCount = 0;
-
-  for (const key of Object.keys(all)) {
-    if (!key.startsWith(CONFIG.STATE_PREFIX)) continue;
-    try {
-      const st = JSON.parse(all[key]);
-      delete st.t; delete st.pt; delete st.qt; delete st.qa;
-      delete st.tc; delete st.th; delete st.part; delete st.partStartTc;
-      delete st.kbT; delete st.kbP; delete st.kbTarget;
-      props.setProperty(key, JSON.stringify(st));
-      resetCount++;
-    } catch (e) {}
-  }
-  console.log(`Reset ${resetCount} chat(s). Running full sync...`);
-  syncCleanMarkdown_(true, true);
-}
-
-function doPost(e) {
-  try {
-    const { secret } = getSecrets_();
-    const payload = JSON.parse(e.postData.contents);
-    if (!payload || payload.secret !== secret) {
-      return jsonResponse_({ ok: false, error: 'Unauthorized' });
-    }
-
-    if (payload.action === 'get_pdf') {
-      const existing = DriveApp.getFileById(payload.fileId);
-      if (existing.isTrashed()) {
-        return jsonResponse_({ ok: false, error: 'Existing PDF is trashed' });
-      }
-      const bytes = existing.getBlob().getBytes();
-      return jsonResponse_({ ok: true, pdfB64: Utilities.base64Encode(bytes) });
-    }
+---

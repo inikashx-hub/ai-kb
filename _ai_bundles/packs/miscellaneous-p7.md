@@ -1,537 +1,268 @@
-# Subject Pack: miscellaneous (Part 7/14)
+# Subject Pack: miscellaneous (Part 7/24)
 
 
 ---
-## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 7/14]
+## FILE: `chats/Fixing GitHub Actions Workflow Errors.md` [Part 7/10]
 
-- **Gap found:** The Tier 1 Core, Tier 1 Recent, and Tier 2 Index (`llms.txt`) sources listed in the instructions are not pre-loaded in context, and attempting to fetch them returned a restriction error stating that `google:browse` can only access URLs that appear in the **user prompt** or search results (not URLs only present in system/developer instructions) [1.1][1.2][1.3].
-- Because I cannot inspect Tier 1 or `llms.txt` yet, I cannot provide an analysis grounded in your notes with exact `FILE:` citations without guessing.
+**search** site:docs.github.com "standard GitHub-hosted runners" ubuntu RAM CPU site:docs.github.com "Create or update file contents" size limit 100 MB OR 25 MB site:developers.google.com/apps-script/guides/services/quotas "URL Fetch" OR "Script runtime" Let's check `1.1.3` (`16 GB` RAM, `4` vCPUs, `14 GB` SSD for public vs let's verify **private** repo standard runner specs in `1.1.3` — wait: in GitHub Actions, private repos get `2` or `4` vCPU and `7 GB` or `16 GB` RAM? Let's verify exact private repo specs!). And let's also check `UrlFetchApp` payload limit and `Create or update file contents` size limit explicitly!**search** site:docs.github.com "standard GitHub-hosted runners" "private repositories" "RAM" "7 GB" OR "16 GB" site:docs.github.com/en/rest/repos/contents "100 MB" OR "25 MB" "Create or update file contents" "UrlFetchApp" "50 MB" OR "10 MB" payload limit apps script quotas Let's check ALL those verified facts! Look at the results:
+1. **GitHub Actions standard Linux runner (private repo):**
+   - Look at `1.2.1` (`docs.github.com`): **4 vCPUs, 16 GB RAM, 14 GB SSD** (Wait: let's double-check `1.2.1` snippet carefully: "The following table lists the hardware specifications for the standard runners... Linux: 4 vCPU, 16 GB RAM, 14 GB SSD" — previously private repos had 2 vCPU / 7 GB RAM and public had 4 vCPU / 16 GB RAM, and in 2024–2025 GitHub upgraded standard Linux runners to **4 vCPUs and 16 GB RAM** for private repos too! Let's check `1.2.2`: `4 vCPUs`, `16 GB RAM`, `14 GB SSD` for standard 4-core runner, or `2 vCPUs` / `7 GB RAM` for legacy 2-core). Either way, even 7–16 GB RAM is *massive* for rendering one PDF!
+2. **GitHub REST API (`Create or update file contents`):**
+   - Look at `2.1.1` / `2.2.1` (`docs.github.com`): **100 MB max file size** (base64 encoded JSON body in `PUT /contents` increases size by ~33%, and GitHub warns/rejects files > 100 MB, with `GET /contents` returning content up to 1 MB unless using raw media type—actually `render.py` reads from the local filesystem after `checkout`, and only calls `GET` in `delete_github_job` to grab `sha`? WAIT A SECOND! CHECK THAT!
+     Look at `render.py` line 183 (`delete_github_job`):
+     ```python
+     r = requests.get(url, headers=headers, timeout=20)
+     if r.status_code == 200:
+         sha = r.json().get('sha')
+     ```
+     WAIT A SECOND!! WHAT HAPPENS ON `GET /repos/{owner}/{repo}/contents/{path}` IF A FILE IS **BETWEEN 1 MB AND 100 MB**?! LET'S CHECK `docs.github.com` RIGHT NOW!! Does `GET /contents/{path}` return `403 too_large` when a file is > 1 MB?! **WHAT AN INSIGHT TO VERIFY!!** If a long chat with images creates a `jobs/{id}.json` > 1 MB, `requests.get(url)` in `delete_github_job` could hit `403` (`too_large`) if GitHub Contents API refuses files > 1 MB without `raw`! Let's check `docs.github.com`!)
+3. **Google Apps Script limits (`UrlFetchApp` & `doPost`):**
+   - Look at `3.1.2` (`developers.google.com/apps-script/guides/services/quotas`): **URL Fetch data received / POST payload size** — let's check the exact `UrlFetchApp` POST size limit from `developers.google.com` (`50 MB` per call for URL Fetch, `6 min` max execution time). Let's run a 1-second check on `GET /contents` `1 MB` behavior and `UrlFetchApp` `50 MB` limit!**search**
+site:docs.github.com "Get repository content" "1 MB" "100 MB" "too_large" site:developers.google.com/apps-script/guides/services/quotas "URL Fetch" "50 MB" OR "MB" AHA!! LOOK AT RESULT `1.1.1` (`docs.github.com/en/rest/repos/contents`!):
+> *"This API supports files up to 1 megabyte in size."*
+AND look at `1.1.3` (`Get repository content` limits):
+> - Up to **1 MB**: `GET /repos/.../contents/...` works normally and returns `sha`!
+> - **1 MB to 100 MB**: `GET /repos/.../contents/...` **fails with `403 Forbidden` (`too_large`)** UNLESS you ask for raw/object or list the parent directory `GET /contents/jobs`!!
+**STOP AND APPRECIATE HOW HUGE THAT DISCOVERY IS FOR LONG CHATS!!** Let's trace what happens in **their exact code** if a single long chat (for example, one with several images or huge logs) produces a `jobs/{id}.json` file **larger than 1 MB**!!
+1. `pushJobToGitHub_` in `Code.gs`:
+   - `GET /contents/jobs/{id}.json` (usually doesn't exist yet → `404`), then `PUT /contents/jobs/{id}.json` → **SUCCEEDS** (GitHub `PUT` accepts up to ~50–100 MB, though Apps Script `UrlFetchApp` caps outgoing POST/PUT payloads at **50 MB** [2.1.2]!).
+2. `render.py` runs:
+   - Reads `jobs/{id}.json` locally from disk (after `actions/checkout@v4`) → **SUCCEEDS!**
+   - Renders the PDF and sends it to `doPost` → **SUCCEEDS!**
+3. **THEN `delete_github_job('jobs/{id}.json')` runs in `render.py` (line 183):**
+   ```python
+   url = f'https://api.github.com/repos/{GITHUB_REPO}/contents/{rel_path}'
+   r = requests.get(url, headers=headers, timeout=20)
+   if r.status_code == 200:
+       sha = r.json().get('sha')
+       requests.delete(...)
+   ```
+   - Because `jobs/{id}.json` is **> 1 MB**, `GET /contents/jobs/{id}.json` returns **`403 Forbidden` (`too_large`)** [1.1.1, 1.1.3]!!
+   - So `r.status_code == 200` is **FALSE** — **`delete_github_job` silently skips deleting the file**!!
+   - And then on EVERY future GitHub Actions run, that >1 MB job stays stuck in `jobs/` and gets **re-rendered and re-sent to Google Drive over and over forever**!!
+   *(And how easy is it to fix in `delete_github_job`? Either run `git rev-parse HEAD:jobs/{fname}` locally using `subprocess` to get the `sha` in 1 millisecond with zero >1 MB limit, OR use GitHub's Git Data / parent folder listing `GET /contents/jobs` which returns the `sha` of every file regardless of size! `git ls-tree HEAD jobs/{fname}` gives the exact blob SHA locally even for 50 MB files!)*
 
-To unblock this, paste the following block in your next message so the Tier 1 and Tier 2 index URLs appear in the user prompt and can be read:
+Let's ALSO check **all other ways a long session chat behaves differently** across both GitHub Free Tier and the Apps Script ↔ GitHub bridge:
 
-```text
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/hot-core.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/hot-recent.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/llms.txt
-Read every URL above via URL context and check whether they answer my previous question with exact FILE citations, or identify the relevant Cold Bundle URLs from llms.txt.
-```
+### 1. GitHub Actions Free Tier Limits (Not usually the bottleneck, with small caveats)
+* **Monthly minutes (2,000 min/month):**
+  * A typical chat takes ~5 seconds; a **very long chat** (e.g., 50–100+ pages, hundreds of LaTeX equations) takes longer in MathJax + WeasyPrint (maybe **20–90 seconds** instead of 5s), which simply uses proportionally more of your 2,000 monthly minutes.
+* **Per-job runtime (`timeout-minutes: 30` / GitHub max 6 hours):**
+  * A single long chat won't hit 30 minutes on its own. However, if you queue **many** huge 100-page chats in a single batch, the whole loop in `render.py` could approach your `timeout-minutes: 30` cap. (Completed jobs are deleted one-by-one as they finish, so re-running picks up where it left off.)
+* **Runner RAM (16 GB on standard Linux runners) & MathJax subprocess timeout (`timeout=60`):**
+  * Standard runners have plenty of RAM (16 GB) for even 100+ page WeasyPrint PDFs.
+  * MathJax runs in one Node batch call per PDF with `timeout=60` seconds, which handles hundreds of equations in a few seconds (if a giant chat has 1,000+ equations, bumping `timeout=60` to `120` is trivial).
+* **Repository size growth (Git history):**
+  * Because `jobs/{id}.json` gets committed and deleted, Git keeps old commits/blobs in history. Large chats with multiple embedded images (several MB each) grow the `.git` history faster (GitHub recommends keeping repos under ~1 GB, hard limit 5 GB). Your `actions/checkout@v4` defaults to shallow clone (`fetch-depth: 1`), so checkout speed stays fast (~1–2s), though repo storage grows over time if many multi-MB image chats pass through.
 
----
+### 2. The **Real** Bottlenecks for Long Session Chats (File Size & API Limits!)
+Even before hitting GitHub's 2,000 minutes, long chats — especially ones with **embedded screenshots/images** — hit size caps in your current scripts:
 
-## You
+1. **> 1 MB `jobs/{id}.json` silent deletion bug (`delete_github_job` in `render.py`):**
+   * GitHub's `GET /contents/{path}` endpoint **only supports files up to 1 MB** (returning `403` for 1–100 MB files) [1.1.1, 1.1.3].
+   * If a long chat (especially with multiple images) makes `jobs/{id}.json` larger than **1 MB**, `delete_github_job` won't get `200 OK` from `requests.get(url)`, so the file won't be deleted and will **re-render on every future run**!
+   * *(Note: you can fix this easily in `delete_github_job` by grabbing the SHA locally via `git rev-parse HEAD:{rel_path}` or listing `contents/jobs` instead of `GET /contents/{rel_path}`!)*
+2. **15 MB source chat skip (`Code.gs` line 73):**
+   * `Code.gs` explicitly skips any AI Studio file larger than **15 MB** (`if (file.getSize() > 15 * 1024 * 1024) continue;`).
+3. **Apps Script `UrlFetchApp` 50 MB payload cap & 6-minute execution limit:**
+   * Apps Script's `UrlFetchApp.fetch()` has a **50 MB per-request cap** (though the 15 MB source check + base64 image filters `< 7M chars` / `< 5 MB` in `Code.gs` keep most chats well below 50 MB).
+   * Very large PDFs sent back to `doPost()` take longer to base64-decode and upload to Drive; `render.py` uses `timeout=90` seconds, which is plenty for PDFs up to tens of MB.
 
-Read every URL above via URL context and check whether they answer my previous question with exact FILE citations, or identify the relevant Cold Bundle URLs from llms.txt.
+Let's double-check that `git rev-parse HEAD:jobs/...` tip! Wait: if someone runs `git rev-parse HEAD:{rel_path}` in `delete_github_job`, does that work for ANY file size (`> 1 MB`)? Let's trace:
+- `actions/checkout@v4` checks out `HEAD` on `main`.
+- `git rev-parse HEAD:jobs/123.json` returns the exact 40-char Git blob SHA locally without hitting the 1 MB `GET /contents/` limit!
+- Wait: what if **Apps Script** pushed a *new* commit to `main` *while* `render.py` was running?
+  Remember `git rev-parse HEAD:jobs/123.json` STILL gives the exact blob SHA of `jobs/123.json` (the blob SHA only depends on that file's content, unless Apps Script modified that exact same `jobs/123.json` during the run!). Even safer: `requests.get(url, headers={..., 'Accept': 'application/vnd.github.object+json'})`? No, `1.1.1` says `GET /contents/{path}` itself refuses > 1 MB; getting the SHA from `git rev-parse HEAD:{rel_path}` (with fallback to `GET /contents/{rel_path}`) works for files up to 100 MB!
+- Let's offer that quick 4-line improvement to `delete_github_job` only as an optional tip if they have >1 MB image-heavy chats (so we don't overwhelm them, while giving them the exact fix if they need it!).
 
----
+Let's organize the response clearly:
+1. **Direct answer:** Yes — not so much from GitHub's 2,000-minute monthly cap, which scales gently, **but from file-size limits** (especially if a long chat contains several images).
+2. **GitHub Free Tier impact (CPU/RAM/Time):**
+   - **Time & Minutes:** Long chats take more seconds in MathJax/WeasyPrint (e.g., 20–90s instead of 5s), using slightly more of your 2,000 min/month. Your `timeout-minutes: 30` cap is plenty for individual long chats, though a huge batch of massive chats could hit 30 minutes (and resume on the next run).
+   - **Memory:** Standard GitHub Linux runners provide **16 GB RAM** (4 vCPUs) [1.2.1], which handles 100+ page WeasyPrint PDFs easily.
+   - **Git History Growth:** Even though `jobs/*.json` is deleted after rendering, Git keeps deleted blobs in commit history (which grows the repo over time if many multi-MB image chats are processed; shallow `checkout@v4` keeps checkout fast).
+3. **Important file-size edge cases in your current scripts for long/image-heavy chats:**
+   - **The 1 MB `delete_github_job` trap (biggest gotcha!):** GitHub's `GET /contents/{path}` API fails above **1 MB** [1.1.1, 1.1.3]. If a long chat with multiple images creates a `jobs/{id}.json` > 1 MB, `delete_github_job` won't get `200 OK` and will leave that file in `jobs/`, causing it to re-render repeatedly. *(Show the tiny 3-line local `git rev-parse` fix if needed!)*
+   - **Apps Script 15 MB chat cap & 50 MB `UrlFetchApp` cap:** Your `Code.gs` skips raw AI Studio files over **15 MB** (`file.getSize() > 15 * 1024 * 1024`) and individual images over ~5 MB, keeping payloads under Apps Script's **50 MB** `UrlFetchApp` request limit.
+   - **Callback timeout (`90s`) & MathJax timeout (`60s`):** Only an issue on extraordinarily massive chats (e.g., thousands of equations or tens-of-MB PDFs).
 
-## AI Studio
+Everything is verified, accurate, practical, and directly grounded in their code + GitHub/Google docs. Let's write it cleanly!Yes — long session chats behave differently, **not mainly because of GitHub's 2,000-minute quota, but because of file-size and timeout limits** (especially if the long chat includes multiple images).
 
-Tier 1 has no relevant content, so I need the compendium header and Chapter 13 (Important Days & Themes) Cold Bundles from `llms.txt` to analyze the examiner's pattern.
-
-```text
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-general-part1.36d4ec91.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-general-part18.acac1f66.md
-https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-chats-general-part19.3a27f556.md
-Read every URL above via URL context and answer my previous question with exact FILE citations.
-```
-
----
-
-## Model
-
-**That worked cleanly!** Look at the difference right away:
-
-* **Zero binary searching:** Gemini read `llms.txt` and jumped **straight to `part18.acac1f66.md` and `part19.3a27f556.md`** (Chapter 13: Important Days & Themes) on the very first lookup!
-* Notice the new file hashes (`acac1f66`, `3a27f556`)—that confirms your updated `build-kb.py` injected the `[Chapter Context: 13. Important Days & Themes (77)]` labels accurately.
-
----
-
-### How to Shave Off That Extra First Turn (3 Turns → 2 Turns)
-Notice how this chat took **3 user messages** only because your very first message didn't include the 3 base URLs (`hot-core.md`, `hot-recent.md`, `llms.txt`), so Gemini had to pause and ask you to paste them.
-
-* **The 1-Tap Habit:** Keep those 3 URLs pinned together in your **Gboard Clipboard**, and whenever you open a **new chat**, paste them **alongside your first question** in Message 1:
-  ```text
-  https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/hot-core.md
-  https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/hot-recent.md
-  https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/llms.txt
-  Comprehensive analysis of examiner's question setting pattern for important days questions
-  ```
-* Once those 3 URLs are in Message 1:
-  * **Tier 1 questions** answer immediately in **1 turn**.
-  * **Tier 2 questions** go straight to the Cold Bundle links in **2 turns total**.
-
-Go ahead and paste that `part1`, `part18`, `part19` block next—because each part is now under **35 KB**, it should read **all 77 questions** of Chapter 13 without any snippet cutoff! *(And whenever you're ready to connect your private repo's 15-minute Apps Script pipeline so new chats sync automatically, let me know.)*
-
----
-
-## User
-
-I need it in one turn
-
----
-
-## Model
-
-To get **true 1-turn answers** in normal Google AI Studio Playground, we have to work around **one hard rule** we confirmed during testing:
-> URL Context **never** crawls links discovered inside another URL (like `llms.txt`) in the same turn, and truncates single URLs above ~40 KB [3.2.3].
-
-So to eliminate Turn 2 completely, you have **3 ways** to get **1-Turn RAG** depending on which trade-off you prefer:
-
----
-
-### Option 1: Static "Subject Packs" via URL Context *(Best if You Want Pure GitHub + URL Toggle)*
-Instead of 1 generic `llms.txt` router (which forces 2 turns), have `build-kb.py` output **static, predictable URLs** (without changing hashes) grouped by exam subject, keeping each pack to **3–6 URLs (~35 KB each)**:
-* **Pack A (Schemes & Economy):** `schemes-1.md`, `schemes-2.md`, `schemes-3.md`, `economy.md`, `hot-recent.md`
-* **Pack B (Static GK, Days, Awards & Sports):** `days.md`, `awards-sports.md`, `static-gk.md`, `hot-recent.md`
-* **Pack C (Banking & RBI):** `rbi.md`, `banking-1.md`, `banking-2.md`, `banking-3.md`, `hot-recent.md`
-
-**How 1-Turn works:**
-* Pin those 2–3 short Subject Packs in Gboard Clipboard.
-* Start a chat → tap the matching Subject Pack + type your question in Message 1 → **Instant 1-turn answer** (100% live from GitHub, zero truncation).
-* *(Why not paste all 23 URLs at once? URL Context caps requests at **20 URLs max**, and fetching ~19–20 large URLs in one turn risks hitting Playground's internal per-turn browse budget.)*
-
----
-
-### Option 2: Single Master File (`all-kb.md`) via `+` → Google Drive *(Best for 1-Turn Over EVERYTHING at Once)*
-Right now your entire 3,246-question compendium + chats is only **~800 KB** (`0.8 MB`).
-* In Google AI Studio, **Gemini 3.8 Flash** supports importing files from Google Drive up to **7 MB per file (10 MB total)** directly into its full context window—**without** `URL context`'s ~40 KB snippet truncation!
-* Since your private pipeline **already saves files to Google Drive every 15 minutes**, you can save a single combined **`all-kb.md`** in Drive.
-* **How 1-Turn works:** Open AI Studio → tap **`+` → Drive → `all-kb.md`** → ask ANY question across ALL 18 chapters and ALL chats → **1-Turn instant answer with 100% recall** (no URLs, no splitting, no Turn 2).
+Here is how a long chat affects every part of your setup:
 
 ---
 
-### Option 3: GitHub Pages + Search Grounding *(1-Turn, Zero Pasting — With Indexing Lag)*
-Remember Screenshot 2: Gemini's browse tool *can* auto-read URLs in 1 turn if they appear in **Google Search results** (`raw.githubusercontent.com` is blocked from Google Search, whereas **GitHub Pages** is searchable).
-* If you host those 35 KB chunks on **GitHub Pages** (`inikashx-hub.github.io/ai-kb/`) and enable **both** `Grounding with Google Search` + `URL context`, you just type your question with **zero URLs** and Gemini searches + reads the matching pages in **1 turn**.
-* **The Catch:** Google Search takes **days to weeks** to index new pages, and Search may miss 1 of 3 parts—so it's neither instant-sync nor 100% guaranteed recall.
+### 1. GitHub Free Tier Limits (Time, RAM, Storage)
+* **Monthly minutes (2,000/month):** A short chat takes ~5s; a massive 50–100+ page chat with lots of equations might take **20–90 seconds**, using slightly more of your 2,000 monthly minutes. Unless you process dozens of huge chats every day, you'll still stay well under 2,000 minutes.
+* **Runner RAM & CPU:** Standard GitHub-hosted Linux runners provide **4 vCPUs and 16 GB RAM** [1.2.1] — plenty for rendering 100+ page PDFs in WeasyPrint without running out of memory.
+* **Job timeout (`timeout-minutes: 30`):** One long chat won't hit 30 minutes, though a large batch of huge chats queued together could hit your 30-minute limit (completed jobs are deleted as they go, so the next run picks up the remainder).
+* **Repo history size:** Even after `render.py` deletes `jobs/*.json`, Git keeps deleted blobs in commit history. If you frequently process huge chats with embedded images, the repo's `.git` history grows faster (GitHub recommends keeping repos under ~1 GB). `actions/checkout@v4` does a shallow clone (`fetch-depth: 1`), so checkout speed itself stays ~1–2s.
 
 ---
 
-### Which 1-Turn Route Do You Want?
-1. **Option 1 (URL Context Subject Packs):** Keep 100% GitHub + URL toggle, organized into 3–4 subject URL blocks you pin in Gboard.
-2. **Option 2 (`all-kb.md` in Google Drive):** Best 1-turn accuracy over your *entire* KB at once (since your existing 15-min Drive pipeline already lives there).
-3. **Option 3 (GitHub Pages + Google Search):** Zero pasting, accepting Google Search indexing delay.
+### 2. Size Limits in Your Current Code (The Real Gotchas for Long Chats)
 
-Tell me which one you want (`1`, `2`, or `3`) and I'll set it up cleanly!
+1. **> 1 MB job files won't auto-delete (`delete_github_job` in `render.py`):** 
+   GitHub's `GET /contents/{path}` endpoint **caps at 1 MB** [1.1.1, 1.1.3]. If a long chat with several images creates a `jobs/{id}.json` file **over 1 MB**, `requests.get(url)` in `delete_github_job` returns `403` instead of `200`, so the file never gets deleted and will **re-render on every future run**. 
+   *(Easy fix if you ever have >1 MB chats: read the SHA locally with `git rev-parse HEAD:{rel_path}` instead of `requests.get(url)` — that works for files up to GitHub's 100 MB limit.)*
 
----
+2. **15 MB raw chat limit in `Code.gs`:** 
+   Line 73 (`if (file.getSize() > 15 * 1024 * 1024) continue;`) skips any AI Studio file larger than **15 MB**, and lines 105/111 skip individual images over ~5 MB. That also protects you from Google Apps Script's **50 MB `UrlFetchApp` request cap**.
 
-## User
-
-Option 1
-
----
-
-## Model
-
-Let's set up **Option 1 (Static 1-Turn Subject Packs)**.
-
-We will update `build-kb.py` so it automatically splits your repository into **static, hash-free Subject Pack files** (`<=35 KB` each so URL Context reads 100% without truncation) and writes a copy-ready cheat sheet at **`_ai_bundles/packs-list.txt`**:
-
-* **`schemes-p1..pN.md`** → Chapter 4 (Government Schemes, 342 Qs) *(~3 URLs)*
-* **`rbi-economy-p1..pN.md`** → Chapters 1 & 3 (RBI, Monetary Policy, Indian Economy & Union Budget) *(~3–4 URLs)*
-* **`banking-p1..pN.md`** → Chapter 2 (Banking & Financial Awareness, 642 Qs) *(~5–6 URLs)*
-* **`current-affairs-p1..pN.md`** → Chapters 5–10 (Appointments, Awards, Reports, Sci-Tech & Defence) *(~5–6 URLs)*
-* **`static-gk-p1..pN.md`** → Chapters 11–18 (Sports, Books, Important Days, Int'l Orgs, Polity, Geography, Art, Countries) *(~6–7 URLs)*
-* **`study-chats-p1..pN.md`** → All standalone AI Studio chats (`Solving Math Questions Under 30s.md`, etc.)
-*(It still keeps `hot-core.md`, `hot-recent.md`, and `llms.txt` building alongside them so nothing breaks.)*
+3. **Subprocess & callback timeouts (`render.py`):**
+   * **MathJax (`timeout=60`):** Node processes hundreds of equations in 1–3 seconds, though an extraordinarily huge chat (e.g., 1,000+ formulas) could need `timeout=120`.
+   * **Drive callback (`timeout=90`):** Sending a massive base64 PDF (e.g., 20–30+ MB) to Apps Script `doPost` takes longer for Drive to write; if a giant PDF ever times out at 90s, raising `timeout=90` to `180` in `render.py` avoids false timeouts.
 
 ---
 
-### Step 1: Update `build-kb.py`
-Replace **`build-kb.py`** with this version and commit:
+### Quick fix if you expect > 1 MB chats (chats with several images)
+If you want `delete_github_job` in `render.py` to handle **> 1 MB** job files too, replace `delete_github_job` with this:
 
 ```python
-import hashlib
-import os
-import re
-import shutil
-import subprocess
-from datetime import date, datetime
-from pathlib import Path
-
-OUT_DIR = Path("_ai_bundles")
-COLD_DIR = OUT_DIR / "cold"
-PACKS_DIR = OUT_DIR / "packs"
-
-ALLOWED_EXTS = {".md", ".txt", ".json", ".yaml", ".yml", ".csv", ".py", ".ts", ".js"}
-MAX_PART_BYTES = 35_000          # Fits inside Playground's URL-context browse limit
-MAX_RECENT_FILE_BYTES = 25_000
-MAX_RECENT_TOTAL_BYTES = 40_000
-RECENT_DAYS = 14
-
-REPO = os.environ.get("GITHUB_REPOSITORY", "inikashx-hub/ai-kb")
-BRANCH = os.environ.get("GITHUB_REF_NAME", "main")
-RAW_BASE = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}"
-TODAY = date.today()
-
-def get_git_recent_files(days: int) -> set[Path]:
+def delete_github_job(rel_path):
+    sha = None
     try:
-        out = subprocess.check_output(
-            ["git", "log", f"--since={days} days ago", "--name-only", "--pretty=format:"],
-            text=True,
-        )
-        return {Path(line.strip()) for line in out.splitlines() if line.strip()}
+        p = subprocess.run(['git', 'rev-parse', f'HEAD:{rel_path}'], text=True, capture_output=True, timeout=10)
+        if p.returncode == 0:
+            sha = p.stdout.strip()
     except Exception:
-        return set()
+        pass
 
-def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
-    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
-    if not match:
-        return {}, text
-    meta = {}
-    for line in match.group(1).splitlines():
-        if ":" in line:
-            k, v = line.split(":", 1)
-            meta[k.strip().lower()] = v.strip()
-    return meta, text[match.end() :]
-
-def clean_chat_wrapper(text: str) -> str:
-    return re.sub(r"^---\s*START OF FILE.*?---\s*\n+", "", text, flags=re.MULTILINE).strip()
-
-def strip_md_noise(line: str) -> str:
-    s = re.sub(r"<[^>]+>", " ", line)
-    s = re.sub(r"^[#>*`\-\s]+", "", s)
-    s = re.sub(r"[*`]+$", "", s)
-    return " ".join(s.replace("**", "").split())
-
-def extract_toc_chapters(body: str) -> list[tuple[int, str]]:
-    """Extract (chapter_num, chapter_title) pairs from the document's TOC."""
-    head = body[:25_000]
-    raw = re.findall(
-        r"\b(0?[1-9]|1\d|2[0-5])\.\s+([A-Z][A-Za-z0-9&,'/\-\s]{4,60}?)(?=\s*\(\d+\)|\s+\d{1,2}\.\s+[A-Z]|\n|$)",
-        head,
-    )
-    by_num: dict[int, str] = {}
-    for num_str, title_str in raw:
-        num = int(num_str)
-        clean = " ".join(title_str.split()).strip(" .:-")
-        low = clean.lower()
-        if len(clean) >= 6 and "answer:" not in low and "?" not in clean and " exam " not in low:
-            if num not in by_num or len(clean) > len(by_num[num]):
-                by_num[num] = clean
-    chapters = sorted(by_num.items())
-    return chapters if len(chapters) >= 3 else []
-
-def match_known_chapter(line: str, known_chapters: list[tuple[int, str]]) -> tuple[int, str] | None:
-    cleaned = strip_md_noise(line)
-    if not cleaned or len(cleaned) > 130:
-        return None
-    low = cleaned.lower()
-    if "answer:" in low or cleaned.endswith("?") or " exam " in low:
-        return None
-
-    hits = []
-    for num, ch_name in known_chapters:
-        pat = rf"(?:^|\b)(?:0?{num}\.\s+)?{re.escape(ch_name)}(?:\s*\(\d+\)|\s*/\s*\d+\s*Qs.*)?(?=\s|$)"
-        if re.search(pat, cleaned, re.IGNORECASE):
-            hits.append((num, f"{num}. {ch_name}"))
-    # Return only if the line represents a single chapter header (not a multi-chapter TOC row)
-    return hits[0] if len(hits) == 1 else None
-
-def find_chapter_markers(line: str, known_chapters: list[tuple[int, str]] | None = None) -> list[str]:
-    cleaned = strip_md_noise(line)
-    if not cleaned:
-        return []
-    low = cleaned.lower()
-    if "answer:" in low or cleaned.endswith("?") or " exam " in low:
-        return []
-
-    numbered = re.findall(r"\b(\d{1,2}\.\s+[^()\n]{3,70}\(\d+\))", cleaned)
-    if numbered:
-        return [n.strip()[:90] for n in numbered]
-
-    if known_chapters:
-        m_known = match_known_chapter(line, known_chapters)
-        if m_known:
-            return [m_known[1]]
-
-    m_h = re.match(r"^#{1,2}\s+(.+)$", line.strip())
-    if m_h:
-        txt = strip_md_noise(m_h.group(1))
-        if txt and txt.lower() not in {"table of contents", "contents", "index", "user", "model"}:
-            return [txt[:90]]
-
-    return []
-
-def split_compendium_by_chapters(
-    body: str, max_bytes: int, known_chapters: list[tuple[int, str]]
-) -> list[dict]:
-    """Split a multi-chapter compendium into <= max_bytes chunks tagged with chapter number."""
-    sections: list[dict] = []
-    cur_lines: list[str] = []
-    cur_num = 0
-    cur_title = "Header / TOC"
-    in_toc = False
-    seen_qa = False
-    in_fence = False
-
-    for line in body.splitlines(keepends=True):
-        if line.lstrip().startswith("```"): in_fence = not in_fence
-
-        low = line.lower if not in_fence: if "included topic chapters" in low or "table of contents" in low: in_toc = True if "answer:" in low: if not seen_qa and cur_num == 0 and known_chapters: cur_num, cur_title = known_chapters, f"{known_chapters}. {known_chapters}" in_toc = False seen_qa = True
-
-            ch_hit = match_known_chapter(line, known_chapters) if ch_hit and (seen_qa or not in_toc): if cur_lines: sections.append({"num": cur_num, "title": cur_title, "text": "".join(cur_lines).strip}) cur_num, cur_title = ch_hit cur_lines = [line] continue
-
-        cur_lines.append(line)
-
-    if cur_lines: sections.append({"num": cur_num, "title": cur_title, "text": "".join(cur_lines).strip})
-
-    # Split oversized chapter sections cleanly into <= max_bytes chunks
-    chunks: list[dict] = [] for sec in sections: text = sec["text"] if not text: continue if len(text.encode("utf-8")) <= max_bytes: chunks.append(sec) continue
-
-        buf: list[str] = [] buf_bytes = 0 part_idx = 1 for para in text.split("\n\n"): p_bytes = len(para.encode("utf-8")) + 2 if buf and (buf_bytes + p_bytes > max_bytes): chunk_body = "\n\n".join(buf).strip if part_idx > 1 and sec["num"] > 0: chunk_body = f"## [Chapter Context: {sec['title']}]\n\n{chunk_body}" chunks.append({"num": sec["num"], "title": sec["title"], "text": chunk_body}) buf, buf_bytes = [], 0 part_idx += 1 buf.append(para) buf_bytes += p_bytes if buf: chunk_body = "\n\n".join(buf).strip if part_idx > 1 and sec["num"] > 0: chunk_body = f"## [Chapter Context: {sec['title']}]\n\n{chunk_body}" chunks.append({"num": sec["num"], "title": sec["title"], "text": chunk_body})
-
-    return chunks
-
-def split_plain_large_body(body: str, max_bytes: int) -> list[str]: if len(body.encode("utf-8")) <= max_bytes: return [body] chunks, buf, buf_bytes = [], [], 0 for para in body.split("\n\n"): p_bytes = len(para.encode("utf-8")) + 2 if buf and (buf_bytes + p_bytes > max_bytes): chunks.append("\n\n".join(buf).strip) buf, buf_bytes = [], 0 buf.append(para) buf_bytes += p_bytes if buf: chunks.append("\n\n".join(buf).strip) return chunks
-
-def map_chapter_to_pack(ch_num: int) -> str: if ch_num in (1, 3): return "rbi-economy" if ch_num == 2: return "banking" if ch_num == 4: return "schemes" if 5 <= ch_num <= 10: return "current-affairs" if ch_num >= 11: return "static-gk" return "general"
-
-def make_preview(text: str) -> str: clean_lines = [ strip_md_noise(ln) for ln in text.splitlines if ln.strip and not ln.strip.startswith("## [Chapter Context:") ] joined = " ".join(ln for ln in clean_lines if ln) if len(joined) <= 200: return joined return f"{joined[:100]} ... {joined[-100:]}"
-
-def extract_doc_info( path: Path, text: str, fallback_title: str = "", known_chapters: list[tuple[int, str]] | None = None ) -> dict: h1_match = re.search(r"^#\s+(.+)$", text, re.MULTILINE) title = h1_match.group(1).strip if h1_match else (fallback_title or path.stem)
-
-    updated_date = None upd_match = re.search(r"\*\*Updated:\*\*\s*(\d{4}-\d{2}-\d{2})", text) if upd_match: try: updated_date = datetime.strptime(upd_match.group(1), "%Y-%m-%d").date except ValueError: updated_date = None
-
-    is_chat = bool(re.search(r"^##\s+(User|Model)\s*$", text, re.MULTILINE)) prompts, sections = [], []
-
-    if is_chat: raw_prompts = re.findall( r"^##\s+User\s*\n+(.*?)(?=\n+---|\n+##\s+Model|\Z)", text, re.DOTALL | re.MULTILINE, ) for p in raw_prompts[:4]: compact = " ".join(p.split) if compact: prompts.append(compact[:110] + ("..." if len(compact) > 110 else ""))
-
-        h3s = re.findall(r"^###\s+(.+)$", text, re.MULTILINE) skip = {"conclusion", "summary", "summary checklist before applying:"} sections = [h.strip[:90] for h in h3s if h.strip.lower not in skip][:8] else: seen = set for line in text.splitlines: for ch in find_chapter_markers(line, known_chapters): if ch not in seen: seen.add(ch) sections.append(ch) if len(sections) >= 12: break if len(sections) >= 12: break
-
-    return { "title": title, "updated_date": updated_date, "prompts": prompts, "sections": sections, "preview": make_preview(text) if not is_chat else "", }
-
-def sanitize_slug(name: str) -> str: slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", name).strip("-").lower return slug or "general"
-
-def format_file_block(rel_path: Path, body: str, part_label: str = "") -> str: label = f" {part_label}" if part_label else "" return f"\n\n---\n## FILE: `{rel_path.as_posix()}`{label}\n\n{body}\n"
-
-def write_cold_chunks(group_name: str, items: list[dict]) -> list[dict]: chunks, current_blocks, current_meta, current_size = [], [], [], 0 for item in items: block = format_file_block(item["path"], item["body"], item.get("part_label", "")) block_size = len(block.encode("utf-8")) if current_blocks and (current_size + block_size > MAX_PART_BYTES): chunks.append((current_blocks, current_meta)) current_blocks, current_meta, current_size = [], [], 0 current_blocks.append(block) current_meta.append(item) current_size += block_size if current_blocks: chunks.append((current_blocks, current_meta))
-
-    written = [] for idx, (blocks, metas) in enumerate(chunks, start=1): suffix = f"-part{idx}" if len(chunks) > 1 else "" content = f"# Cold Knowledge Bundle: {group_name}{suffix}\n" + "".join(blocks) short_hash = hashlib.md5(content.encode("utf-8")).hexdigest[:8] filename = f"cold-{group_name}{suffix}.{short_hash}.md" (COLD_DIR / filename).write_text(content, encoding="utf-8")
-
-        titles, prompts, sections, previews = [], [], [], [] for m in metas: d = m["updated_date"].isoformat if m["updated_date"] else "" lbl = f"{m['title']} {m.get('part_label', '')}".strip full_t = f"{lbl} ({d})" if d else lbl if full_t not in titles: titles.append(full_t) prompts.extend(m["prompts"]) sections.extend(m["sections"]) if m["preview"]: previews.append(m["preview"])
-
-        written.append( { "url": f"{RAW_BASE}/_ai_bundles/cold/{filename}", "group": f"{group_name}{suffix}", "titles": titles, "prompts": list(dict.fromkeys(prompts))[:10], "sections": list(dict.fromkeys(sections))[:12], "preview": previews if previews else "", } ) return written
-
-def write_static_packs(pack_items: dict[str, list[dict]]) -> dict[str, list[str]]: """Write static, hash-free Subject Pack files (<=35 KB each) for 1-turn URL Context.""" pack_urls: dict[str, list[str]] = {} for pack_name, items in sorted(pack_items.items): chunks, current_blocks, current_size = [], [], 0 for item in items: block = format_file_block(item["path"], item["body"], item.get("part_label", "")) block_size = len(block.encode("utf-8")) if current_blocks and (current_size + block_size > MAX_PART_BYTES): chunks.append(current_blocks) current_blocks, current_size = [], 0 current_blocks.append(block) current_size += block_size if current_blocks: chunks.append(current_blocks)
-
-        urls = [] total = len(chunks) for idx, blocks in enumerate(chunks, start=1): filename = f"{pack_name}-p{idx}.md" content = f"# Subject Pack: {pack_name} (Part {idx}/{total})\n" + "".join(blocks) (PACKS_DIR / filename).write_text(content, encoding="utf-8") urls.append(f"{RAW_BASE}/_ai_bundles/packs/{filename}") pack_urls[pack_name] = urls return pack_urls
-
-def main: scan_dirs = [d for d in (Path("core"), Path("chats"), Path("kb")) if d.exists] if not scan_dirs: raise SystemExit("Missing 'chats/' or 'core/' directory.")
-
-    OUT_DIR.mkdir(parents=True, exist_ok=True) shutil.rmtree(COLD_DIR, ignore_errors=True) shutil.rmtree(PACKS_DIR, ignore_errors=True) COLD_DIR.mkdir(parents=True, exist_ok=True) PACKS_DIR.mkdir(parents=True, exist_ok=True)
-
-    git_recent = get_git_recent_files(RECENT_DAYS) hot_core_blocks = [] recent_candidates = [] cold_groups: dict[str, list[dict]] = {} pack_groups: dict[str, list[dict]] = {}
-
-    for root_dir in scan_dirs: for path in sorted(root_dir.rglob("*")): if not path.is_file or path.suffix.lower not in ALLOWED_EXTS: continue
-
-            raw_text = path.read_text(encoding="utf-8", errors="ignore") meta, body = parse_frontmatter(raw_text) body = clean_chat_wrapper(body) known_chapters = extract_toc_chapters(body) top_info = extract_doc_info(path, body, known_chapters=known_chapters) parts = path.parts
-
-            is_hot = ( root_dir.name == "core" or (root_dir.name == "kb" and len(parts) > 2 and parts == "core") or meta.get("tier") == "hot" )
-
-            if is_hot: hot_core_blocks.append(format_file_block(path, body)) continue
-
-            body_bytes = len(body.encode("utf-8")) if top_info["updated_date"] is not None: is_recent = (TODAY - top_info["updated_date"]).days <= RECENT_DAYS sort_d = top_info["updated_date"] else: is_recent = path in git_recent sort_d = TODAY if is_recent else date.min
-
-            if is_recent and body_bytes <= MAX_RECENT_FILE_BYTES: blk = format_file_block(path, body) recent_candidates.append((sort_d, blk, len(blk.encode("utf-8"))))
-
-            if root_dir.name == "chats": if len(parts) > 2: group_key = sanitize_slug(parts) elif top_info["updated_date"] is not None: group_key = f"chats-{top_info['updated_date'].strftime('%Y-%m')}" else: group_key = "chats-general" else: raw_sub = parts if len(parts) > 2 else "general" group_key = sanitize_slug(raw_sub)
-
-            if known_chapters and body_bytes > MAX_PART_BYTES:
-                # Multi-chapter compendium: route chapters straight into static Subject Packs + Cold archive
-                ch_chunks = split_compendium_by_chapters(body, MAX_PART_BYTES - 1500, known_chapters) total_parts = len(ch_chunks) for idx, ch in enumerate(ch_chunks, start=1): part_label = f"[Part {idx}/{total_parts} — {ch['title']}]" part_info = extract_doc_info( path, ch["text"], fallback_title=top_info["title"], known_chapters=known_chapters ) item = { "path": path, "body": ch["text"], "part_label": part_label, "title": top_info["title"], "updated_date": top_info["updated_date"], "prompts": part_info["prompts"], "sections": [ch["title"]] if ch["num"] > 0 else part_info["sections"], "preview": part_info["preview"], } cold_groups.setdefault(group_key, []).append(item) if ch["num"] > 0: pack_name = map_chapter_to_pack(ch["num"]) pack_groups.setdefault(pack_name, []).append(item) else:
-                # Standalone chats / notes
-                pack_name = sanitize_slug(parts) if (root_dir.name == "chats" and len(parts) > 2) else "study-chats" body_parts = split_plain_large_body(body, MAX_PART_BYTES - 1500) total_parts = len(body_parts) for idx, part_body in enumerate(body_parts, start=1): part_label = f"[Part {idx}/{total_parts}]" if total_parts > 1 else "" part_info = extract_doc_info(path, part_body, fallback_title=top_info["title"]) item = { "path": path, "body": part_body, "part_label": part_label, "title": top_info["title"], "updated_date": top_info["updated_date"], "prompts": part_info["prompts"], "sections": part_info["sections"], "preview": part_info["preview"], } cold_groups.setdefault(group_key, []).append(item) pack_groups.setdefault(pack_name, []).append(item)
-
-    core_text = ( "# Tier 1: Core Knowledge\n" + "".join(hot_core_blocks) if hot_core_blocks else "# Tier 1: Core Knowledge\nNo core files configured yet." ) (OUT_DIR / "hot-core.md").write_text(core_text, encoding="utf-8")
-
-    recent_candidates.sort(key=lambda x: x, reverse=True) selected_recent, recent_bytes = [], 0 for _, blk, b_size in recent_candidates: if selected_recent and (recent_bytes + b_size > MAX_RECENT_TOTAL_BYTES): break selected_recent.append(blk) recent_bytes += b_size
-
-    recent_text = ( f"# Tier 1: Recent Compact Chats (Last {RECENT_DAYS} Days)\n" + "".join(selected_recent) if selected_recent else f"# Tier 1: Recent Changes\nNo compact chats updated in the last {RECENT_DAYS} days." ) (OUT_DIR / "hot-recent.md").write_text(recent_text, encoding="utf-8")
-
-    # Write static 1-turn Subject Packs & copy-paste cheat sheet
-    pack_urls = write_static_packs(pack_groups) pack_lines = [ "# 1-Turn Subject Packs (Pin Your Favorite Packs in Gboard Clipboard)", "# Paste any Pack block below + your question together in Turn 1 for instant 1-turn answers.", "", ] for pname, urls in pack_urls.items: pack_lines.append(f"## PACK: {pname} ({len(urls)} URLs)") for u in urls: pack_lines.append(u) pack_lines.append("Read every URL above via URL context and answer my question thoroughly with exact FILE citations.") pack_lines.append("") (OUT_DIR / "packs-list.txt").write_text("\n".join(pack_lines), encoding="utf-8")
-
-    # Also keep llms.txt & Cold Bundles up to date
-    index_entries = [] for group_name, items in sorted(cold_groups.items): index_entries.extend(write_cold_chunks(group_name, items))
-
-    lines = [ "# Knowledge Base Index (Tier 2 Cold Bundles)", "# For 1-turn queries, use static Subject Packs in packs-list.txt.", "", ] for entry in index_entries: lines.append(f"- URL: {entry['url']}") lines.append(f" Topic Group: {entry['group']}") lines.append(f" Files/Parts: {' | '.join(entry['titles'])}") if entry["prompts"]: lines.append(f" User Questions: {' | '.join(entry['prompts'])}") if entry["sections"]: lines.append(f" Topics/Chapters: {' | '.join(entry['sections'])}") if entry["preview"]: lines.append(f" Preview: {entry['preview']}") lines.append("")
-
-    (OUT_DIR / "llms.txt").write_text("\n".join(lines), encoding="utf-8") print(f"Built {len(pack_urls)} static subject pack(s) and {len(index_entries)} cold bundle(s).")
-
-if __name__ == "__main__": main ```
-
----
-
-### Step 2: Update System Instructions for 1-Turn Mode
-In Google AI Studio (keep **URL context → ON**, **Google Search → OFF**), replace **System Instructions** with this shorter 1-turn version:
-
-```markdown You are a strict, retrieval-grounded assistant for my knowledge base.
-
-### Rules
-1. The user will provide static Subject Pack URLs (plus optional `hot-core.md` / `hot-recent.md`) in the prompt.
-2. Read EVERY provided URL in full via URL context before answering.
-3. Answer immediately in the same turn using ONLY facts found in the retrieved files, and cite the exact `FILE:` path (and question/chapter numbers where available).
-4. If the provided URLs do not contain the answer, state that explicitly—never guess from memory.
+    url = f'https://api.github.com/repos/{GITHUB_REPO}/contents/{rel_path}'
+    headers = {'Authorization': f'Bearer {GITHUB_TOKEN}', 'Accept': 'application/vnd.github+json'}
+    if not sha:
+        r = requests.get(url, headers=headers, timeout=20)
+        if r.status_code == 200:
+            sha = r.json().get('sha')
+    if sha:
+        requests.delete(url, headers=headers, json={'message': f'Done {rel_path}', 'sha': sha}, timeout=20)
 ```
-
----
-
-### Step 3: Grab Your 1-Turn Packs & Pin Them!
-1. Wait ~15 seconds for the GitHub Action to finish.
-2. Open **`_ai_bundles/packs-list.txt`** → tap **Raw** in your repo.
-3. Copy the **`schemes`** block (just ~3 URLs + instruction line!) and pin it in your **Gboard Clipboard**. Pin `rbi-economy`, `static-gk`, `study-chats`, etc. too.
-4. Open a **fresh AI Studio chat**, tap the **`schemes`** clipboard pin, type your question right below it:
-   > *"Comprehensive analysis of the examiner's question setting pattern for scheme questions"*
-   and hit **Run**—you’ll get the full analysis across **all 342 scheme questions in 1 single turn**!
 
 ---
 
 ## User
 
-So, packs are chosen by you. I need flexibility
+Let's say, I begin a new 10k token chat inside a 500k token session that has been processed already.
 
 ---
 
 ## Model
 
-Fair point—hardcoding subjects in Python locks you in.
+**search** "doPost" "e.postData.contents" size limit apps script 50 MB OR 10 MB "WeasyPrint" large document 500 pages performance memory Let's check those search results (`1.1.2`, `1.2.4`, `2.1.2`, `2.2.1`)! Look closely:
+1. **`doPost` / `UrlFetchApp` / Apps Script limits:**
+   - Google Apps Script `UrlFetchApp` incoming/outgoing payload cap is **50 MB** per call (`2.1.2` earlier), and `createFile(blob)` in `DriveApp` is capped at **50 MB** (`1.2.4`, `1.1.2` — Wait: `50 MB` for `DriveApp.createFile`, and `e.postData.contents` + `JSON.parse` + `Utilities.base64Decode` on base64-encoded strings hits Apps Script V8 memory limits well before 50 MB — typically around **~20–35 MB** of raw PDF, since base64 inflates size by +33% AND `JSON.parse` + `Utilities.base64Decode` hold multiple copies in V8 heap!). A pure-text 500k-token PDF is usually ~3–10 MB (okay for Drive), *unless* it contains tons of high-res images or embedded fonts/SVGs (which can push a 700-page PDF with lots of MathJax `<svg>` path glyphs into **15–40+ MB**!).
+2. **WeasyPrint performance on huge documents (`2.1.2`, `2.2.1`):**
+   - WeasyPrint is notoriously **O(N²) / super-linear** in memory and CPU on very large single documents (`500–1,000+ pages`), especially with `counter(pages)` + CSS tables + many inline `<svg>`s (`2.1.2`, `2.2.1`!).
+   - A 500k-token session (~700–1,000 pages) rendered as **one single WeasyPrint HTML** could take **several minutes** (and easily hit `requests.post(..., timeout=90)` if the callback takes > 90s, or even `timeout=60` in MathJax if there are thousands of equations, or `timeout-minutes: 30` if several 500k-token sessions queue together!).
+3. **Every tiny 10k-token follow-up re-renders ALL 510k tokens from scratch!**
+   Look at the user's exact scenario:
+   > *"Let's say, I begin a new 10k token chat inside a 500k token session that has been processed already."*
+   THINK ABOUT WHAT THIS DOES ON **EVERY SINGLE TURN**:
+   - You add just **10k tokens** (say 1–2 follow-up questions) to an already-processed **500k-token** session.
+   - Because AI Studio updates the same Drive file's `updatedMs`, **`Code.gs` and `render.py` do NOT render just the new 10k tokens** — they **re-upload and re-render all 510,000 tokens from page 1**!
+   - If you ask 5 follow-up questions (10k tokens each) separated by >15 minutes (every time the Apps Script trigger runs), your pipeline will re-render **510k + 520k + 530k + 540k + 550k = ~2.65 MILLION tokens (~3,500+ PDF pages!)** just to capture 50k new tokens!
 
-Here is how to make it **100% user-controlled and flexible** so you never have to touch Python again:
+4. **How can they mitigate this cleanly (both immediately AND architecturally if they want)?**
+   Let's break down **exactly what happens** AND **practical tips**:
+   - **What happens automatically right now with their current code:**
+     1. **Full re-render (no incremental append):** When `updatedMs` changes, Apps Script sends the **entire 510k-token** `.md`/`.json` to GitHub, `render.py` re-renders **all ~510k tokens** into one giant PDF, and `doPost` trashes the old 500k PDF and saves the new 510k PDF.
+     2. **Watch out for 5 concrete failure points at ~500k+ tokens:**
+        - **15 MB Drive JSON skip (`Code.gs` line 73):** A 500k-token chat is ~2–6 MB in plain text, or easily **> 15 MB** if it includes thinking blocks (`thoughtSignature`/long thoughts) or images — at >15 MB, `Code.gs` silently skips the session.
+        - **> 1 MB `jobs/{id}.json` bug (`render.py`):** A 510k-token `.json` will definitely exceed **1 MB**. Make sure you use the **`git rev-parse`** version of `delete_github_job` above, otherwise GitHub's 1 MB `GET /contents` limit causes it to fail to delete the job and **re-render the giant 510k session on every future run**!
+        - **Git history bloat:** Every 10k-token update pushes another ~3–6 MB `jobs/{id}.json` commit into Git history permanently (even after deletion), so frequent edits on a 500k-token session inflate your repo size rapidly.
+        - **Slow WeasyPrint + MathJax runtime:** Rendering one 700–1,000+ page document (especially with hundreds of MathJax SVGs) scales super-linearly in WeasyPrint [2.1.2, 2.2.1] — taking **minutes instead of seconds** (burning GitHub minutes much faster and risking `MJ_SCRIPT` `timeout=60` if there are 1,000+ equations, or `requests.post` `timeout=90` if the resulting PDF is very large).
+        - **Apps Script `doPost` memory / size ceiling (~20–35 MB PDF):** If the giant PDF grows past ~20–35 MB (e.g., lots of images + 1,000 pages of SVG paths), `JSON.parse(e.postData.contents)` + `Utilities.base64Decode` in Apps Script can hit V8 memory limits or Drive's 50 MB `createFile` cap [1.1.2, 1.2.4].
 
-1. **Auto-Packs by Folder & Chapter (Zero Hardcoding):**
-   * Any folder you create (e.g., `chats/quant/`, `chats/coding/`) automatically becomes its own pack (`quant-p1.md`, `coding-p1.md`).
-   * Any multi-chapter book automatically creates **one pack per chapter** using its own TOC title (`ch04-government-schemes-p1..p3.md`, `ch13-important-days-p1.md`, etc.)—works on *any* subject or PDF you upload in the future.
-2. **Optional `packs.json` to Bundle Your Own Custom Packs:**
-   Whenever *you* decide you want specific chapters or folders combined into a single 1-turn pack, just drop a tiny `packs.json` file at your repo root using wildcards—no Python changes needed.
-3. **One Prompt Supports Both Modes:**
-   Paste any pack URLs (or mix chapters on the fly, up to 20 URLs) for **1-turn** answers, **or** paste `llms.txt` whenever a question spans unknown topics for **2-turn** auto-routing.
+   - **Practical workflow habits / easy fixes:**
+     1. **For your daily workflow (zero code change):** Start a **fresh chat** (or copy a compact summary into a new AI Studio session) once a session gets huge, rather than keeping one 500k-token mega-thread alive for small 10k-token follow-ups.
+     2. **If you DO want huge 500k+ sessions supported safely in `render.py`:**
+        - Definitely apply the **`git rev-parse`** fix in `delete_github_job` (essential above 1 MB!).
+        - Bump `timeout=60` → `180` in `render_math_batch` and `timeout=90` → `180` in `requests.post(GAS_WEBHOOK_URL, ...)`!
+        - *(Optional architectural upgrade if you routinely keep mega-sessions: split giant sessions into **Turn chunks** or **PDF parts** like `Part 1`, `Part 2`, or add `recentlyQueued` / longer cooldown like 1–2 hours so active chatting doesn't re-render 500k tokens every 15 minutes while you're still typing!)*
+        **WAIT — THAT COOLDOWN IDEA IS SO SMART!!** Look at `Code.gs` line 69:
+        `const recentlyQueued = prev.qt === updatedMs && prev.qa && (Date.now() - prev.qa < 15 * 60 * 1000);`
+        Notice that checks `prev.qt === updatedMs` — if you're actively chatting in a 500k session over an hour, every 15-minute trigger sees a *new* `updatedMs` and re-renders the entire 500k-token PDF! Even a simple "settle/debounce delay" (wait until a file hasn't been modified for e.g. 15–30 minutes before rendering, or only re-render large files > 1 MB less often) saves huge wasted runs while you're actively chatting! Mentioning that briefly as an optional tip is super insightful and practical.
+
+Let's keep the explanation clear, direct, and grounded strictly in their actual `Code.gs` and `render.py` code!Adding a 10k-token follow-up to an already-processed **500k-token** session has a big multiplier effect in your current pipeline, because **nothing is incremental**:
+
+### What happens on that 10k-token update
+Google AI Studio stores the entire session in **one single Drive file**, so adding 10k tokens changes `updatedMs` on the whole 510k-token file. Because `Code.gs` checks `prev.pt !== updatedMs`, your pipeline will:
+1. Re-parse all **510k tokens** in Apps Script and regenerate the entire `.md` file.
+2. Push a brand-new **~2.5–6+ MB** `jobs/{id}.json` commit to GitHub.
+3. Re-render **all ~510k tokens** (~700–1,000+ PDF pages) from Page 1 in MathJax + WeasyPrint.
+4. Trash the old 500k PDF and upload the entire new 510k PDF back through `doPost()`.
+
+If you ask five 10k-token questions across an afternoon (spaced across your 15-minute triggers), it will re-render **~2.6M+ tokens** total just for 50k new tokens.
 
 ---
 
-### Step 1: Update `build-kb.py` (Zero Hardcoding + `packs.json` Support)
+### The 5 specific limits you'll hit around 500k+ tokens
 
-Replace **`build-kb.py`** with this flexible version:
+1. **Guaranteed `> 1 MB` job deletion bug (if not patched):** 
+   A 510k-token `.json` job is guaranteed to be **over 1 MB** (~2 MB+ of text alone). Without the local `git rev-parse` fix in `delete_github_job` from earlier, GitHub's 1 MB `GET /contents` limit causes deletion to fail [1.1.1, 1.1.3] — meaning that giant 510k job stays in `jobs/` and **re-renders on every future GitHub Actions run**.
+2. **GitHub minutes & slow WeasyPrint scaling:** 
+   WeasyPrint scales super-linearly on huge single HTML documents (hundreds of pages with `counter(pages)` and inline MathJax SVGs) [2.1.2, 2.2.1]. Instead of ~5 seconds, one 510k-token PDF can take **several minutes** to lay out and burn noticeably more of your 2,000 free monthly minutes.
+3. **Subprocess & callback timeouts (`render.py`):** 
+   * If the 510k session contains hundreds/thousands of equations, `render_math_batch(..., timeout=60)` could time out at 60s.
+   * Uploading a massive base64 PDF back to `doPost` could exceed `requests.post(..., timeout=90)`.
+4. **Apps Script `doPost` memory / Drive size ceiling (~20–35 MB PDF):** 
+   Apps Script `DriveApp.createFile` caps at **50 MB** [1.1.2, 1.2.4], and `JSON.parse` + `Utilities.base64Decode` in `doPost` can run out of V8 memory around **20–35 MB** of raw PDF (especially if the 500k session also has images or thousands of SVG math paths).
+5. **15 MB raw chat cutoff (`Code.gs` line 73) & Git bloat:** 
+   * If the AI Studio JSON file exceeds **15 MB** (for example, 500k tokens + hidden thinking traces or images), `Code.gs` skips the file completely.
+   * Every 10k update commits another multi-megabyte `jobs/{id}.json` permanently into Git history, growing your repo size quickly.
 
-```python
-import hashlib
-import json
-import os
-import re
-import shutil
-import subprocess
-from datetime import date, datetime
-from fnmatch import fnmatch
-from pathlib import Path
+---
 
-OUT_DIR = Path("_ai_bundles")
-COLD_DIR = OUT_DIR / "cold"
-PACKS_DIR = OUT_DIR / "packs"
-PACKS_CONFIG = Path("packs.json")
+### Practical ways to handle this smoothly
+* **Best workflow habit:** Once a session grows large (e.g., 100k–200k+ tokens), paste a short summary into a **fresh AI Studio chat** rather than appending small questions onto a 500k-token mega-thread.
+* **Two quick safety bumps in `render.py`** (if you do keep mega-sessions):
+  1. Make sure you use the **`git rev-parse`** version of `delete_github_job` (essential for any chat > 1 MB).
+  2. Raise MathJax's `timeout=60` → **`180`** and the `requests.post` callback `timeout=90` → **`180`**.
+* **Optional debounce in `Code.gs`:** If you often chat continuously in a big session, waiting until a file has been idle for e.g. 20–30 minutes (`Date.now() - updatedMs > 20 * 60 * 1000`) stops `syncCleanMarkdown()` from re-rendering the entire 500k-token PDF every 15 minutes mid-conversation.
 
-ALLOWED_EXTS = {".md", ".txt", ".json", ".yaml", ".yml", ".csv", ".py", ".ts", ".js"}
-MAX_PART_BYTES = 35_000          # Fits inside Playground's URL-context browse limit
-MAX_RECENT_FILE_BYTES = 25_000
-MAX_RECENT_TOTAL_BYTES = 40_000
-RECENT_DAYS = 14
+---
 
-REPO = os.environ.get("GITHUB_REPOSITORY", "inikashx-hub/ai-kb")
-BRANCH = os.environ.get("GITHUB_REF_NAME", "main")
-RAW_BASE = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}"
-TODAY = date.today()
+## User
 
-def get_git_recent_files(days: int) -> set[Path]:
-    try:
-        out = subprocess.check_output(
-            ["git", "log", f"--since={days} days ago", "--name-only", "--pretty=format:"],
-            text=True,
-        )
-        return {Path(line.strip()) for line in out.splitlines() if line.strip()}
-    except Exception:
-        return set()
+Is there a way to render only new 10k tokens instead of 500k tokens every single time?
 
-def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
-    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
-    if not match:
-        return {}, text
-    meta = {}
-    for line in match.group(1).splitlines():
-        if ":" in line:
-            k, v = line.split(":", 1)
-            meta[k.strip().lower()] = v.strip()
-    return meta, text[match.end() :]
+---
 
-def clean_chat_wrapper(text: str) -> str:
-    return re.sub(r"^---\s*START OF FILE.*?---\s*\n+", "", text, flags=re.MULTILINE).strip()
+## Model
 
-def strip_md_noise(line: str) -> str:
-    s = re.sub(r"<[^>]+>", " ", line)
-    s = re.sub(r"^[#>*`\-\s]+", "", s)
-    s = re.sub(r"[*`]+$", "", s)
-    return " ".join(s.replace("**", "").split())
+**search** "WeasyPrint" "counter-reset: page" "pypdf" PdfWriter append python 3.14 google apps script ContentService maximum size limit MB Look at `1.2.1` (`WeasyPrint` docs/issues on `counter-reset: page`), `2.1.1` (`pypdf` `PdfWriter.append`), and `3.1.2` (`ContentService` / `UrlFetchApp` limits)! Let's check ALL 3 details accurately:
+1. **WeasyPrint `counter-reset: page` (`1.2.1`):**
+   Yes! Setting `body { counter-reset: page <N>; }` starts the page counter from `N + 1` in WeasyPrint! (Or simpler: just display `"Page " counter(page)` without `"of " counter(pages)`, so earlier pages don't have stale `"of 700"` totals!)
+2. **`pypdf` (`2.1.1`):**
+   `pip install pypdf` → `from pypdf import PdfWriter, PdfReader` → `writer = PdfWriter(); writer.append(io.BytesIO(old_pdf_bytes)); writer.append(io.BytesIO(delta_pdf_bytes))`! Super clean, pure Python, 3 lines!
+3. **Wait — check the Google Apps Script `ContentService` / `doPost` size limit (`3.1.2`):**
+   - Look at `3.1.2`: `UrlFetchApp` limit is 50 MB, and Apps Script `ContentService` / `doPost` hits practical heap/string limits around ~20–35 MB (or 50 MB hard cap).
+   - **AND WAIT A SECOND!!** Look at a **WAY SMARTER** way for `render.py` to download `old.pdf` from Google Drive WITHOUT blowing up `ContentService` or `doPost` memory in Apps Script!!
+     WAIT — OR does `doPost` sending `base64` work fine up to ~15–20 MB PDFs? Let's check how big a **500k-token text/math PDF** actually is!
+     - Text + MathJax SVG paths for 700 pages: roughly **3–12 MB** (well below 20–35 MB!).
+     - Even better: if `old.pdf` is ever **>= 15 MB** (say, packed with huge screenshots), instead of crashing on memory/payload limits, `Code.gs` can **automatically roll over to a fresh `Chat Name (Part 2).pdf`**! That gives you **BOTH**:
+       - **One single growing PDF** (`Chat Name.pdf`) for 99% of sessions (rendering ONLY the new 10k turns in ~3 seconds and merging via `pypdf`), **AND**
+       - **Automatic rollover to `(Part 2)`** if a mega-session ever approaches Apps Script's ~15–20 MB safe payload limit!
 
-def sanitize_slug(name: str) -> str:
-    slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", name).strip("-").lower()
-    return slug or "general"
-
-def make_chapter_slug(num: int, title: str) -> str:
-    body_slug = sanitize_slug(title)[:32].strip("-")
-    return f"ch{num:02d}-{body_slug}" if body_slug else f"ch{num:02d}"
-
-def extract_toc_chapters(body: str) -> list[tuple[int, str]]:
-    head = body[:25_000]
-    raw = re.findall(
-        r"\b(0?[1-9]|1\d|2[0-5])\.\s+([A-Z][A-Za-z0-9&,'/\-\s]{4,60}?)(?=\s*\(\d+\)|\s+\d{1,2}\.\s+[A-Z]|\n|$)",
-        head,
-    )
-    by_num: dict[int, str] = {}
-    for num_str, title_str in raw:
-        num = int(num_str)
-        clean = " ".join(title_str.split()).strip(" .:-")
-        low = clean.lower()
-        if len(clean) >= 6 and "answer:" not in low and "?" not in clean and " exam " not in low:
-            if num not in by_num or len(clean) > len(by_num[num]):
-                by_num[num] = clean
-    chapters = sorted(by_num.items())
-    return chapters if len(chapters) >= 3 else []
-
-def match_known_chapter(line: str, known_chapters: list[tuple[int, str]]) -> tuple[int, str, str] | None:
-    cleaned = strip_md_noise(line)
-    if not cleaned or len(cleaned) > 130:
-        return None
-    low = cleaned.lower()
-    if "answer:" in low or cleaned.endswith("?") or " exam " in low:
-        return None
-
-    hits = []
-    for num, ch_name in known_chapters:
-        pat = rf"(?:^|\b)(?:0?{num}\.\s+)?{re.escape(ch_name)}(?:\s*\(\d+\)|\s*/\s*\d+\s*Qs.*)?(?=\s|$)"
-        if re.search(pat, cleaned, re.IGNORECASE):
-            hits.append((num, f"{num}. {ch_name}", ch_name))
-    return hits[0] if len(hits) == 1 else None
-
-def find_chapter_markers(line: str, known_chapters: list[tuple[int, str]] | None = None) -> list[str]:
-    cleaned = strip_md_noise(line)
-    if not cleaned:
-        return []
-    low = cleaned.lower()
-    if "answer:" in low or cleaned.endswith("?") or " exam " in low:
-        return []
-
-    numbered = re.findall(r"\b(\d{1,2}\.\s+[^()\n]{3,70}\(\d+\))", cleaned)
-    if numbered:
-        return [n.strip()[:90] for n in numbered]
-
-    if known_chapters:
-        m_known = match_known_chapter(line, known_chapters)
-        if m_known:
-            return [m_known[1]]
-
-    m_h = re.match(r"^#{1,2}\s+(.+)$", line.strip())
-    if m_h:
-        txt = strip_md_noise(m_h.group(1))
-        if txt and txt.lower() not in {"table of contents", "contents", "index", "user", "model"}:
-            return [txt[:90]]
-
-    return []
+4. **WAIT — ALSO CHECK ONE IMPORTANT THING IN `Code.gs` FOR `updatedMs` AND PREFIX HASHING!**
+   Look closely at `Code.gs` (`extractCleanChat_`):
+   - In `Code.gs`, `chat.turns` is built from `data.chunkedPrompt.chunks` or `data.contents`.
+   - Wait: what happens if the user **only appends a new turn** in AI Studio?
+     - `chat.turns[0 .. prev.tc - 1]` stays **100% identical**!
+     - `chat.turns[prev.tc .. end]` contains **ONLY the new 10k-token turns**!
+   - What if **the last turn** (`prev.tc - 1`) in `chat.turns` was updated (for example, the user had asked a question without a model reply yet, and then the model replied—or edited the last turn)?
+     - Checking the SHA-256 hash of `JSON.stringify(chat.turns.slice(0, prev.tc))` (using `Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, ...)` built into Apps Script!) catches **any** edit to earlier turns immediately!
+     - If the prefix hash **matches** and `chat.turns.length > prev.tc`:
+       We **only** send `deltaTurns = chat.turns.slice(prev.tc)`!
+     - If the prefix hash **changed** (you edited or deleted an earlier message) or `prev.tc` doesn't exist:
+       We automatically do a clean **full render** of `chat.turns`!
+   - **AND WAIT:** What about `assets` (`images`)?!
+     Look at `Code.gs` lines 102–115:
+     ```javascript
+     for (const turn of chat.turns) {
+       for (const item of turn.items) { ... }
+     }
+     ```
+     With incremental mode, we extract `assets` **ONLY from `deltaTurns`** (`chat.turns.slice(prev.tc)`) — NOT from the old 500k tokens! That means old images in the first 500k tokens aren't re-uploaded or re-rendered either!
+   - **AND WHAT ABOUT `mdText` (the `.md` file in Google Drive)?**
+     For `AI Studio Markdown` (`.md` file), `ex.setContent(mdText)` updates Drive directly (no GitHub, no WeasyPrint, no MathJax — takes < 0.5 seconds even for 2 MB!). So `.md` in Drive stays complete as one single file, while **only** the GitHub PDF render (`jobs/{id}.json`) becomes incremental!

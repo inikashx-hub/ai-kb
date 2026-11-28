@@ -1,4 +1,4 @@
-# Cold Knowledge Bundle: chats-2026-11-part7
+# Cold Knowledge Bundle: chats-2026-11-part17
 
 
 ---

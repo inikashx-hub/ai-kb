@@ -1,421 +1,550 @@
-# Subject Pack: miscellaneous (Part 8/14)
+# Subject Pack: miscellaneous (Part 8/24)
 
 
 ---
-## FILE: `chats/Optimizing Two-Step LLM Routing.md` [Part 8/14]
+## FILE: `chats/Fixing GitHub Actions Workflow Errors.md` [Part 8/10]
 
-def split_compendium_by_chapters(
-    body: str, max_bytes: int, known_chapters: list[tuple[int, str]]
-) -> list[dict]:
-    sections: list[dict] = []
-    cur_lines: list[str] = []
-    cur_num, cur_title, cur_raw_name = 0, "Header / TOC", "header"
-    in_toc, seen_qa, in_fence = False, False, False
+5. **Let's check if the user wants us to explain how it works AND offer the ready-to-paste updated code (`Code.gs`, `render.py`, `build-pdfs.yml`) — or wait: should we give the clear explanation + ask if they want the updated files, OR give the clean solution right now?**
+   Notice how the user asked:
+   > *"Is there a way to render only new 10k tokens instead of 500k tokens every single time?"*
+   They asked a direct "Is there a way...?" question (and earlier they liked complete copy-paste scripts when ready, though right now they haven't confirmed yet whether they prefer **Option A: One merged PDF (`pypdf` append)** vs **Option B: Separate continuation Part PDFs (`Part 2`, `Part 3`)**!). Wait: let's explain clearly:
+   1. **Yes — it's very doable!** Explain the **2 ways** to do it cleanly in their exact setup:
+      - **Approach 1 (Recommended — One Single PDF + Fast Incremental Render via `pypdf`):**
+        - Apps Script stores the **turn count (`tc`)** and a **SHA-256 hash (`th`)** of all previously rendered turns in `PropertiesService`.
+        - When you add 10k new tokens to a 500k session, Apps Script checks if the first `tc` turns are unchanged.
+          - **If unchanged:** Apps Script sends **only the new 10k-token turns** (`~40 KB`) + the old PDF's Drive ID (`existingPdfId`) to GitHub.
+          - GitHub Actions runs MathJax + WeasyPrint on **only those new 10k tokens** (~2–3 seconds!), downloads the existing PDF from Apps Script (`action: 'get_pdf'`), stitches `old.pdf + delta.pdf` in **< 0.5 seconds** using Python's `pypdf`, and sends the combined PDF back (or automatically rolls over to `(Part 2)` if the PDF ever exceeds ~15 MB).
+          - **If you edited an earlier message in the middle:** The hash check automatically falls back to a full re-render so nothing gets out of sync.
+        - **Catch to keep in mind:**
+          - Because `old.pdf + delta.pdf` are merged as separate PDF pages, the new turns start at the **top of a new page** (like a new chapter/continuation) rather than mid-page at the bottom of Page 700, and page numbers work best as `Page 1, Page 2, ...` (or `Page 701...` without `"of N"`, since earlier pages already have baked-in footers unless stamped).
+          - Also, sending the merged PDF back to `doPost` still hits Apps Script's ~20–35 MB transfer limit if a single PDF gets huge (unless you auto-rollover to `Part 2` above ~15 MB).
+      - **Approach 2 (Simplest & Zero Merge Transfer — Separate Part PDFs):**
+        - Same turn-count + hash check in Apps Script, but instead of fetching and re-uploading the huge 500k PDF, GitHub renders **only the 10k new tokens** into a tiny standalone `Chat Name (Part 2).pdf` (or updates `Part 2` as you keep adding turns until `Part 2` itself gets big). Zero large file transfers, zero `doPost` size limits, ~3-second renders!
+   2. **Offer to generate the exact complete updated files (`Code.gs`, `render.py`, `build-pdfs.yml`)** as soon as they say which style they prefer:
+      - **Approach 1** (one single merged PDF via `pypdf`, with automatic `Part 2` rollover only if > 15 MB), **or**
+      - **Approach 2** (separate `Part 2` PDFs for new additions).
 
-    for line in body.splitlines(keepends=True):
-        if line.lstrip().startswith("```"): in_fence = not in_fence
+Let's double-check that every technical detail (hash check on `turns`, `pypdf` append [2.1.1], `WeasyPrint` `counter-reset: page` [1.2.1], Apps Script 50 MB `UrlFetchApp` / ~20–35 MB `doPost` memory limit, new turns starting on a fresh page) is 100% accurate and clearly explained without making anything up!
 
-        low = line.lower if not in_fence: if "included topic chapters" in low or "table of contents" in low: in_toc = True if "answer:" in low: if not seen_qa and cur_num == 0 and known_chapters: cur_num = known_chapters cur_raw_name = known_chapters cur_title = f"{cur_num}. {cur_raw_name}" in_toc = False seen_qa = True
+Let's write a crisp, practical, well-structured answer.Yes — you can avoid re-rendering the old 500k tokens completely by tracking **turn count + a prefix hash** in Apps Script and using **PDF appending (`pypdf`)** [2.1.1] on GitHub.
 
-            ch_hit = match_known_chapter(line, known_chapters) if ch_hit and (seen_qa or not in_toc): if cur_lines: sections.append( {"num": cur_num, "title": cur_title, "raw_name": cur_raw_name, "text": "".join(cur_lines).strip} ) cur_num, cur_title, cur_raw_name = ch_hit cur_lines = [line] continue
-
-        cur_lines.append(line)
-
-    if cur_lines: sections.append( {"num": cur_num, "title": cur_title, "raw_name": cur_raw_name, "text": "".join(cur_lines).strip} )
-
-    chunks: list[dict] = [] for sec in sections: text = sec["text"] if not text: continue if len(text.encode("utf-8")) <= max_bytes: chunks.append(sec) continue
-
-        buf, buf_bytes, part_idx = [], 0, 1 for para in text.split("\n\n"): p_bytes = len(para.encode("utf-8")) + 2 if buf and (buf_bytes + p_bytes > max_bytes): chunk_body = "\n\n".join(buf).strip if part_idx > 1 and sec["num"] > 0: chunk_body = f"## [Chapter Context: {sec['title']}]\n\n{chunk_body}" chunks.append({"num": sec["num"], "title": sec["title"], "raw_name": sec["raw_name"], "text": chunk_body}) buf, buf_bytes = [], 0 part_idx += 1 buf.append(para) buf_bytes += p_bytes if buf: chunk_body = "\n\n".join(buf).strip if part_idx > 1 and sec["num"] > 0: chunk_body = f"## [Chapter Context: {sec['title']}]\n\n{chunk_body}" chunks.append({"num": sec["num"], "title": sec["title"], "raw_name": sec["raw_name"], "text": chunk_body})
-
-    return chunks
-
-def split_plain_large_body(body: str, max_bytes: int) -> list[str]: if len(body.encode("utf-8")) <= max_bytes: return [body] chunks, buf, buf_bytes = [], [], 0 for para in body.split("\n\n"): p_bytes = len(para.encode("utf-8")) + 2 if buf and (buf_bytes + p_bytes > max_bytes): chunks.append("\n\n".join(buf).strip) buf, buf_bytes = [], 0 buf.append(para) buf_bytes += p_bytes if buf: chunks.append("\n\n".join(buf).strip) return chunks
-
-def make_preview(text: str) -> str: clean_lines = [ strip_md_noise(ln) for ln in text.splitlines if ln.strip and not ln.strip.startswith("## [Chapter Context:") ] joined = " ".join(ln for ln in clean_lines if ln) if len(joined) <= 200: return joined return f"{joined[:100]} ... {joined[-100:]}"
-
-def extract_doc_info( path: Path, text: str, fallback_title: str = "", known_chapters: list[tuple[int, str]] | None = None ) -> dict: h1_match = re.search(r"^#\s+(.+)$", text, re.MULTILINE) title = h1_match.group(1).strip if h1_match else (fallback_title or path.stem)
-
-    updated_date = None upd_match = re.search(r"\*\*Updated:\*\*\s*(\d{4}-\d{2}-\d{2})", text) if upd_match: try: updated_date = datetime.strptime(upd_match.group(1), "%Y-%m-%d").date except ValueError: updated_date = None
-
-    is_chat = bool(re.search(r"^##\s+(User|Model)\s*$", text, re.MULTILINE)) prompts, sections = [], []
-
-    if is_chat: raw_prompts = re.findall( r"^##\s+User\s*\n+(.*?)(?=\n+---|\n+##\s+Model|\Z)", text, re.DOTALL | re.MULTILINE, ) for p in raw_prompts[:4]: compact = " ".join(p.split) if compact: prompts.append(compact[:110] + ("..." if len(compact) > 110 else ""))
-
-        h3s = re.findall(r"^###\s+(.+)$", text, re.MULTILINE) skip = {"conclusion", "summary", "summary checklist before applying:"} sections = [h.strip[:90] for h in h3s if h.strip.lower not in skip][:8] else: seen = set for line in text.splitlines: for ch in find_chapter_markers(line, known_chapters): if ch not in seen: seen.add(ch) sections.append(ch) if len(sections) >= 12: break if len(sections) >= 12: break
-
-    return { "title": title, "updated_date": updated_date, "prompts": prompts, "sections": sections, "preview": make_preview(text) if not is_chat else "", }
-
-def format_file_block(rel_path: Path, body: str, part_label: str = "") -> str: label = f" {part_label}" if part_label else "" return f"\n\n---\n## FILE: `{rel_path.as_posix()}`{label}\n\n{body}\n"
-
-def write_cold_chunks(group_name: str, items: list[dict]) -> list[dict]: chunks, current_blocks, current_meta, current_size = [], [], [], 0 for item in items: block = format_file_block(item["path"], item["body"], item.get("part_label", "")) block_size = len(block.encode("utf-8")) if current_blocks and (current_size + block_size > MAX_PART_BYTES): chunks.append((current_blocks, current_meta)) current_blocks, current_meta, current_size = [], [], 0 current_blocks.append(block) current_meta.append(item) current_size += block_size if current_blocks: chunks.append((current_blocks, current_meta))
-
-    written = [] for idx, (blocks, metas) in enumerate(chunks, start=1): suffix = f"-part{idx}" if len(chunks) > 1 else "" content = f"# Cold Knowledge Bundle: {group_name}{suffix}\n" + "".join(blocks) short_hash = hashlib.md5(content.encode("utf-8")).hexdigest[:8] filename = f"cold-{group_name}{suffix}.{short_hash}.md" (COLD_DIR / filename).write_text(content, encoding="utf-8")
-
-        titles, prompts, sections, previews = [], [], [], [] for m in metas: d = m["updated_date"].isoformat if m["updated_date"] else "" lbl = f"{m['title']} {m.get('part_label', '')}".strip full_t = f"{lbl} ({d})" if d else lbl if full_t not in titles: titles.append(full_t) prompts.extend(m["prompts"]) sections.extend(m["sections"]) if m["preview"]: previews.append(m["preview"])
-
-        written.append( { "url": f"{RAW_BASE}/_ai_bundles/cold/{filename}", "group": f"{group_name}{suffix}", "titles": titles, "prompts": list(dict.fromkeys(prompts))[:10], "sections": list(dict.fromkeys(sections))[:12], "preview": previews if previews else "", } ) return written
-
-def write_static_packs(pack_items: dict[str, list[dict]]) -> dict[str, list[str]]: pack_urls: dict[str, list[str]] = {} for pack_name, items in sorted(pack_items.items): chunks, current_blocks, current_size = [], [], 0 for item in items: block = format_file_block(item["path"], item["body"], item.get("part_label", "")) block_size = len(block.encode("utf-8")) if current_blocks and (current_size + block_size > MAX_PART_BYTES): chunks.append(current_blocks) current_blocks, current_size = [], 0 current_blocks.append(block) current_size += block_size if current_blocks: chunks.append(current_blocks)
-
-        urls = [] total = len(chunks) for idx, blocks in enumerate(chunks, start=1): filename = f"{pack_name}-p{idx}.md" content = f"# Subject Pack: {pack_name} (Part {idx}/{total})\n" + "".join(blocks) (PACKS_DIR / filename).write_text(content, encoding="utf-8") urls.append(f"{RAW_BASE}/_ai_bundles/packs/{filename}") pack_urls[pack_name] = urls return pack_urls
-
-def main: scan_dirs = [d for d in (Path("core"), Path("chats"), Path("kb")) if d.exists] if not scan_dirs: raise SystemExit("Missing 'chats/' or 'core/' directory.")
-
-    OUT_DIR.mkdir(parents=True, exist_ok=True) shutil.rmtree(COLD_DIR, ignore_errors=True) shutil.rmtree(PACKS_DIR, ignore_errors=True) COLD_DIR.mkdir(parents=True, exist_ok=True) PACKS_DIR.mkdir(parents=True, exist_ok=True)
-
-    git_recent = get_git_recent_files(RECENT_DAYS) hot_core_blocks = [] hot_core_items = [] recent_candidates = [] cold_groups: dict[str, list[dict]] = {} auto_packs: dict[str, list[dict]] = {}
-
-    for root_dir in scan_dirs: for path in sorted(root_dir.rglob("*")): if not path.is_file or path.suffix.lower not in ALLOWED_EXTS: continue
-
-            raw_text = path.read_text(encoding="utf-8", errors="ignore") meta, body = parse_frontmatter(raw_text) body = clean_chat_wrapper(body) known_chapters = extract_toc_chapters(body) top_info = extract_doc_info(path, body, known_chapters=known_chapters) parts = path.parts
-
-            is_hot = ( root_dir.name == "core" or (root_dir.name == "kb" and len(parts) > 2 and parts == "core") or meta.get("tier") == "hot" )
-
-            if is_hot: hot_core_blocks.append(format_file_block(path, body)) hot_core_items.append({"path": path, "body": body, "part_label": ""}) continue
-
-            body_bytes = len(body.encode("utf-8")) if top_info["updated_date"] is not None: is_recent = (TODAY - top_info["updated_date"]).days <= RECENT_DAYS sort_d = top_info["updated_date"] else: is_recent = path in git_recent sort_d = TODAY if is_recent else date.min
-
-            if is_recent and body_bytes <= MAX_RECENT_FILE_BYTES: blk = format_file_block(path, body) recent_candidates.append((sort_d, blk, len(blk.encode("utf-8"))))
-
-            if root_dir.name == "chats": if len(parts) > 2: group_key = sanitize_slug(parts) elif top_info["updated_date"] is not None: group_key = f"chats-{top_info['updated_date'].strftime('%Y-%m')}" else: group_key = "chats-general" else: raw_sub = parts if len(parts) > 2 else "general" group_key = sanitize_slug(raw_sub)
-
-            if known_chapters and body_bytes > MAX_PART_BYTES: ch_chunks = split_compendium_by_chapters(body, MAX_PART_BYTES - 1500, known_chapters) total_parts = len(ch_chunks) for idx, ch in enumerate(ch_chunks, start=1): part_label = f"[Part {idx}/{total_parts} — {ch['title']}]" part_info = extract_doc_info( path, ch["text"], fallback_title=top_info["title"], known_chapters=known_chapters ) item = { "path": path, "body": ch["text"], "part_label": part_label, "title": top_info["title"], "updated_date": top_info["updated_date"], "prompts": part_info["prompts"], "sections": [ch["title"]] if ch["num"] > 0 else part_info["sections"], "preview": part_info["preview"], } cold_groups.setdefault(group_key, []).append(item) if ch["num"] > 0: ch_pack = make_chapter_slug(ch["num"], ch["raw_name"]) auto_packs.setdefault(ch_pack, []).append(item) else: if root_dir.name == "chats" and len(parts) > 2: pack_name = sanitize_slug(parts) elif root_dir.name == "kb" and len(parts) > 2: pack_name = sanitize_slug(parts) else: pack_name = "study-chats"
-
-                body_parts = split_plain_large_body(body, MAX_PART_BYTES - 1500) total_parts = len(body_parts) for idx, part_body in enumerate(body_parts, start=1): part_label = f"[Part {idx}/{total_parts}]" if total_parts > 1 else "" part_info = extract_doc_info(path, part_body, fallback_title=top_info["title"]) item = { "path": path, "body": part_body, "part_label": part_label, "title": top_info["title"], "updated_date": top_info["updated_date"], "prompts": part_info["prompts"], "sections": part_info["sections"], "preview": part_info["preview"], } cold_groups.setdefault(group_key, []).append(item) auto_packs.setdefault(pack_name, []).append(item)
-
-    core_text = ( "# Tier 1: Core Knowledge\n" + "".join(hot_core_blocks) if hot_core_blocks else "# Tier 1: Core Knowledge\nNo core files configured yet." ) (OUT_DIR / "hot-core.md").write_text(core_text, encoding="utf-8")
-
-    recent_candidates.sort(key=lambda x: x, reverse=True) selected_recent, recent_bytes = [], 0 for _, blk, b_size in recent_candidates: if selected_recent and (recent_bytes + b_size > MAX_RECENT_TOTAL_BYTES): break selected_recent.append(blk) recent_bytes += b_size
-
-    recent_text = ( f"# Tier 1: Recent Compact Chats (Last {RECENT_DAYS} Days)\n" + "".join(selected_recent) if selected_recent else f"# Tier 1: Recent Changes\nNo compact chats updated in the last {RECENT_DAYS} days." ) (OUT_DIR / "hot-recent.md").write_text(recent_text, encoding="utf-8")
-
-    # Apply optional user-defined packs.json (wildcard rules over auto-packs & core)
-    all_pack_sources = dict(auto_packs) if hot_core_items: all_pack_sources["core"] = hot_core_items
-
-    custom_packs: dict[str, list[dict]] = {} if PACKS_CONFIG.exists: cfg = json.loads(PACKS_CONFIG.read_text(encoding="utf-8")) for custom_name, patterns in cfg.items: matched_items = [] for src_name, src_items in sorted(all_pack_sources.items): if any(fnmatch(src_name, pat) for pat in patterns): matched_items.extend(src_items) if matched_items: custom_packs[f"custom-{sanitize_slug(custom_name)}"] = matched_items
-
-    combined_packs = {**auto_packs,** custom_packs} pack_urls = write_static_packs(combined_packs)
-
-    pack_lines = [ "# 1-Turn Dynamic Packs (Auto-generated from folders, chapters, and optional packs.json)", "# Mix and match any URLs below in Turn 1, or define your own combos in packs.json.", "", ] for pname, urls in pack_urls.items: pack_lines.append(f"## PACK: {pname} ({len(urls)} URLs)") for u in urls: pack_lines.append(u) pack_lines.append("Read every URL above via URL context and answer my question with exact FILE citations.") pack_lines.append("") (OUT_DIR / "packs-list.txt").write_text("\n".join(pack_lines), encoding="utf-8")
-
-    index_entries = [] for group_name, items in sorted(cold_groups.items): index_entries.extend(write_cold_chunks(group_name, items))
-
-    lines = [ "# Knowledge Base Index (Tier 2 Cold Bundles)", "# Use static pack URLs from packs-list.txt for 1-turn, or llms.txt for 2-turn discovery.", "", ] for entry in index_entries: lines.append(f"- URL: {entry['url']}") lines.append(f" Topic Group: {entry['group']}") lines.append(f" Files/Parts: {' | '.join(entry['titles'])}") if entry["prompts"]: lines.append(f" User Questions: {' | '.join(entry['prompts'])}") if entry["sections"]: lines.append(f" Topics/Chapters: {' | '.join(entry['sections'])}") if entry["preview"]: lines.append(f" Preview: {entry['preview']}") lines.append("")
-
-    (OUT_DIR / "llms.txt").write_text("\n".join(lines), encoding="utf-8") print(f"Built {len(pack_urls)} pack(s) and {len(index_entries)} cold bundle(s).")
-
-if __name__ == "__main__": main ```
-
-*(Also add `"packs.json"` under `paths:` in `.github/workflows/build-kb.yml` if you later create a `packs.json` so editing `packs.json` auto-triggers a rebuild!)*
+Here is how it works and the two ways you can set it up:
 
 ---
 
-### Step 2: How You Control Packs Yourself (`packs.json` — Optional)
-Without `packs.json`, `_ai_bundles/packs-list.txt` automatically gives you separate static URLs for every folder and every chapter (`ch01-...`, `ch04-...`, `ch13-...`, `study-chats`).
-
-Whenever *you* want to merge any topics into your own custom 1-turn pack, just create **`packs.json`** at the root of `ai-kb`:
-```json { "my-schemes-and-budget": ["ch03-*", "ch04-*"], "daily-revision": ["core", "study-chats", "ch13-*"] } ```
-It builds `custom-my-schemes-and-budget-p1..pN.md` and `custom-daily-revision-p1..pN.md` automatically, completely under your control.
+### Core idea (how Apps Script detects "only new turns")
+In `Code.gs`, every chat is a list of turns (`chat.turns = [User, Model, User, Model, ...]`).
+1. When a chat is rendered, Apps Script saves two extra fields in `PropertiesService`:
+   * `tc`: how many turns were rendered (e.g., `84` turns)
+   * `th`: a SHA-256 hash of `chat.turns[0..83]`
+2. Later, when you add **10k new tokens** (turns `84..87`) to that 500k session:
+   * Apps Script hashes `chat.turns[0..83]` and compares it to `th`.
+   * **If it matches** (99% of the time when continuing a chat): Apps Script sends **only the new 10k-token turns** (`chat.turns.slice(84)`) + their images to GitHub (`~40 KB` JSON instead of `~5 MB`).
+   * **If it doesn't match** (you edited or deleted an earlier message in the middle): it automatically falls back to a full re-render so your PDF never goes out of sync.
 
 ---
 
-### Step 3: Universal System Instructions (Handles Both 1-Turn & 2-Turn)
-Use this single System Instruction in Google AI Studio:
+### Two ways to handle the PDF output
 
-```markdown You are a strict, retrieval-grounded assistant for my knowledge base.
+#### Option A: Keep ONE single merged PDF (`Chat Name.pdf`) — Recommended
+1. `render.py` runs MathJax + WeasyPrint **only on the new 10k tokens** (takes **~2–3 seconds** instead of minutes!).
+2. `render.py` fetches the existing `old.pdf` from Drive (via a small `get_pdf` action in Apps Script `doPost`), stitches `old.pdf + new_turns.pdf` together in **< 0.5 seconds** using Python's `pypdf` [2.1.1], and sends the combined PDF back.
+3. **Safety rollover:** If `old.pdf` ever grows past ~15 MB (approaching Apps Script's ~20–35 MB `doPost` memory ceiling), it automatically starts `Chat Name (Part 2).pdf` instead of failing.
 
-### Rules
-1. Read EVERY URL provided in the user prompt via URL context before answering.
-2. If the provided URLs are Subject/Chapter/Chat packs (not `llms.txt` alone), answer the user's question immediately in the same turn using ONLY facts found in those files, citing exact `FILE:` paths.
-3. If `llms.txt` is provided and the answer is not in the other loaded files, DO NOT guess—output a single `text` code block with the 1 to 8 most relevant Cold Bundle URLs from `llms.txt` plus:
-   `Read every URL above via URL context and answer my previous question with exact FILE citations.`
-4. Never fabricate or extrapolate beyond retrieved content.
-```
+**Small visual trade-off:** The newly appended 10k-token section starts cleanly at the **top of a new page** (after the last page of `old.pdf`), and page footers work best as `"Page 701"` (using CSS `counter-reset: page` [1.2.1]) without `"of 715"` (since pages 1–700 already have their old `"Page X of 700"` text baked in).
 
-Now **you** decide on every query: paste 1 chapter pack, mix 3 chapters together, define custom combos in `packs.json`, or drop `llms.txt` when you want Gemini to discover across the whole repo!
+---
+
+#### Option B: Save new turns as a separate continuation PDF (`Chat Name (Part 2).pdf`)
+1. Same turn-count + hash check, and GitHub renders **only the 10k new tokens** (~2–3 seconds).
+2. Instead of downloading and re-uploading the huge 500k PDF every time, it simply saves/updates **`Chat Name (Part 2).pdf`** in Drive (and keeps appending future small updates into `Part 2` until `Part 2` itself gets large).
+3. **Benefit:** Zero large file transfers through `doPost`, zero Apps Script size limits, even faster.
+
+---
+
+If you tell me which one you prefer (**Option A: one merged PDF** or **Option B: separate Part 2 continuation PDFs**), I can give you the complete, drop-in updated `Code.gs`, `render.py`, and `build-pdfs.yml` for it!
 
 ---
 
 ## User
 
-How to create custom packs.json?
+Option A
 
 ---
 
 ## Model
 
-Here is the step-by-step guide to creating and using **`packs.json`** in your `inikashx-hub/ai-kb` repository.
+**search** "WeasyPrint" "counter-reset: page" "first page" OR "off by one" OR "body" Look at `1.1.3` and `1.1.4` (`GitHub Kozea/WeasyPrint` issues/docs): Look carefully at `1.1.4`:
+> *"It is not possible to change page counter directly on `@page`... `body { counter-reset: page 700; }`"*
+AND notice in `1.1.3` & `1.1.4`: in WeasyPrint, `counter-reset: page <N>` on `body` resets the counter BEFORE the first page counter increment (`1`st page becomes `N + 1`? Or `N`? Wait: in WeasyPrint issue #1167 / #1694, `counter-reset: page 2` on `body` or first element sets page 1 to `2` or `3` depending on version — let's check `1.1.1` / `1.1.4` carefully!). Actually let's check if there is an even simpler, **zero-ambiguity** way OR check `counter-reset: page 2` in WeasyPrint 62+ (`1.1.4`)! Let's run one quick search on `WeasyPrint` `counter-reset: page` `page 2` `body`.**search** site:github.com/Kozea/WeasyPrint "counter-reset: page" "counter(page)" Look at `1.1.3` (`Kozea/WeasyPrint#1167`) and `1.2.1` (`Kozea/WeasyPrint` docs!):
+- Look at `1.1.3`: `body { counter-reset: page 1; }` -> in CSS Paged Media / WeasyPrint, the root/page context increments `page` by 1 *at the start of each page*, so `body { counter-reset: page 700; }` makes the first page `701` (`700 + 1`) — OR in some CSS specs `counter-reset` on `body` sets page 1 to `700` if `body` starts *after* `@page` begins!
+Wait: look at the **even cleaner**, 100% foolproof alternative:
+- On `'full'` mode (non-incremental, e.g. 95% of chats rendered in one go): keep `"Page " counter(page) " of " counter(pages)`!
+- On `'append'` mode (incremental delta chunk): use `body { counter-reset: page <old_page_count>; }` with `"Page " counter(page)`! Wait: what if WeasyPrint starts `counter-reset: page 700` on `body` at `700` vs `701`? Actually in WeasyPrint (`#1167` / `#1694`), `counter-reset: page N` on `body` sets `page` on the first page to `N` (Wait: why? Because `@page` starts Page 1 and increments `page` from 0→1 BEFORE `body` lays out, and THEN `body { counter-reset: page N; }` resets the already-incremented counter to `N` on page 1, and Page 2 increments to `N + 1`! Look at `1.1.3` where `counter-reset: page 1` on `body` didn't double-increment to 2 — wait: let's check `1.1.3` or avoid guessing!).
+Wait — if we aren't 100% certain whether WeasyPrint 70 sets `body { counter-reset: page N }` to `N` or `N + 1`, we can ALSO label appended sections cleanly as `"Update · Page " counter(page)` (starting at 1 for each appended continuation, e.g. `Cont. p.1`, `Cont. p.2`, OR even better: **`pypdf` doesn't even need `counter-reset` to look super clean** if we write `"Cont. Page " counter(page)` or test/stamp!). WAIT — ACTUALLY, THINK ABOUT `Cont. Page 1` vs `Page 701`:
+- Look: on Page 1–700 of `old.pdf`, the bottom-right footer ALREADY says **`Page 1 of 700` ... `Page 700 of 700`**!
+- If Page 701 said `Page 701`, and Page 700 said `Page 700 of 700`, having `"Update (Turns 85–88) · p. 1"` (or `body { counter-reset: page <old_page_count + 1>; }`? No, don't risk off-by-one!) vs labeling the continuation clearly (`"Part 2 · Page 1"` or `"Update · Page " counter(page)`) is **NEVER off-by-one** and immediately tells you where the new update starts!
+- Wait: OR if you WANT continuous numbering `701, 702...`, even `render.py` can check `len(PdfReader(...).pages)`? No, checking the rendered text of `delta` in Python takes 1 line with `pypdf` (`PdfReader(io.BytesIO(delta_bytes)).pages[0].extract_text()`)? No, don't do double renders! Putting **`"Cont. (Turns X–Y) · Page " counter(page) " of " counter(pages)`** (or `"Continued · Page " counter(page) " of " counter(pages)`) in `@bottom-right` on appended pages is **100% consistent, zero off-by-one risk, and works with `"of " counter(pages)` cleanly for that update section**!!
+That's genuinely cleaner and more readable when skimming a 700-page PDF (`Page 700 of 700` → `Continued · Page 1 of 4` → `Continued · Page 2 of 4`)!
 
 ---
 
-### Step 1: Check Your Exact Auto-Pack Names First
-1. Open **`_ai_bundles/packs-list.txt`** → tap **Raw** in your repo.
-2. Look at the `## PACK: ...` names (for example: `ch01-rbi-monetary-policy`, `ch03-indian-economy-union-budget`, `ch04-government-schemes-initiatives`, `ch13-important-days-themes`, `study-chats`, etc.).
+### Let's Double-Check Every Line of `Code.gs`, `render.py`, and `build-pdfs.yml`
 
-You can match those exact names **or** use `*` wildcards (like `"ch04-*"`).
+#### Check `Code.gs` carefully:
+1. Helper `hashTurns_(turns)`:
+   ```javascript
+   function hashTurns_(turns) {
+     const raw = JSON.stringify(turns);
+     const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, raw, Utilities.Charset.UTF_8);
+     return digest.map(b => ('0' + ((b & 0xff).toString(16))).slice(-2)).join('');
+   }
+   ```
+   Wait: check `(b & 0xff).toString(16)` in Apps Script! In Google Apps Script, `computeDigest` returns signed bytes `-128..127`, so `(b & 0xff).toString(16)` gives exact unsigned hex `00..ff`! Zero issues, deterministic across runs!
+
+2. Helper `renderTurnsMd_(chat, turns, opts)` (replaces/extends `renderCleanMd_`):
+   - For the `.md` file in Google Drive (`AI Studio Markdown`): STILL calls `renderFullMd_(chat)` so the Drive `.md` file is always the complete full conversation!
+   - For GitHub PDF job payload (`jobMdText`):
+     - If `mode === 'full'`: `renderFullMd_(chat)` (same as before!)
+     - If `mode === 'new_part'`: `renderContinuationMd_(chat, deltaTurns, startTurnIdx, part)` (with `# Title (Part N)` + `> Continued from Turn X | Model | Updated` + `deltaTurns`)
+     - If `mode === 'append'`: `renderContinuationMd_(chat, deltaTurns, startTurnIdx, null)` (with `> Continued (Turns X–Y) | Model | Updated` + `deltaTurns`)
+   - Wait: verify `startTurnIdx` is 1-based for display (`Turns ${startTurnIdx + 1}–${endTurnIdx}`)! If `prev.tc = 84` and `chat.turns.length = 88`, `Turns 85–88`! Nice!
+
+3. Decision logic in `syncCleanMarkdown()` for `needsPdf`:
+   Let's trace ALL cases when `needsPdf` is `true`!
+   - Remember:
+     ```javascript
+     const needsMd = prev.t !== updatedMs || !prev.m;
+     const jobInFlight = prev.qa && (Date.now() - prev.qa < 15 * 60 * 1000);
+     const needsPdf = (prev.pt !== updatedMs || !prev.p) && !jobInFlight;
+     ```
+   - Inside `if (needsPdf)`:
+     ```javascript
+     const fullTc = chat.turns.length;
+     const fullTh = hashTurns_(chat.turns);
+     let mode = 'full';
+     let part = 1;
+     let partStartTc = 0;
+     let expectedTc = 0;
+     let existingPdfId = null;
+     let targetPdfName = `${baseName}.pdf`;
+     let turnsForPdf = chat.turns;
+
+     if (prev.p && typeof prev.tc === 'number' && prev.tc > 0 && prev.tc <= fullTc && prev.th) {
+       const prefixHash = hashTurns_(chat.turns.slice(0, prev.tc));
+       if (prefixHash === prev.th) {
+         if (fullTc === prev.tc) {
+           // Only metadata/timestamp changed (no new turns in chat.turns) — skip or re-use
+           // Wait: what if file was renamed or metadata edited without adding turns?
+           // Safest: skip expensive PDF re-render if turns are 100% identical AND pdf still exists!
+         }
+       }
+     }
+     ```
+     **HOLD ON! CHECK THAT EDGE CASE!!** What if `fullTc === prev.tc` AND `prefixHash === prev.th`?! Suppose Google Drive touched `updatedMs` (or someone opened AI Studio without adding a turn, OR added an empty/thought-only turn when `INCLUDE_THOUGHTS: false`)!
+     - If `prev.p` still exists and isn't trashed, and `chat.turns` is **100% identical** (`fullTc === prev.tc && prefixHash === prev.th`), there are **ZERO new turns** to render!
+     - We can simply update `prev.pt = updatedMs` without wasting a GitHub Actions run!
+     - What if `fullTc > prev.tc` AND `prefixHash === prev.th`?
+       Check `existingFile = DriveApp.getFileById(prev.p)`:
+       - If `!existingFile.isTrashed()`:
+         - Check `existingFile.getSize()`:
+           - If `< 15 * 1024 * 1024` (under 15 MB):
+             - `mode = 'append'`!
+             - `part = prev.part || 1`
+             - `partStartTc = prev.partStartTc || 0`
+             - `expectedTc = prev.tc`
+             - `existingPdfId = prev.p`
+             - `targetPdfName = part > 1 ? `${baseName} (Part ${part}).pdf` : `${baseName}.pdf``
+             - `turnsForPdf = chat.turns.slice(prev.tc)`
+           - If `>= 15 * 1024 * 1024` (15 MB rollover!):
+             - `mode = 'new_part'`!
+             - `part = (prev.part || 1) + 1`
+             - `partStartTc = prev.tc`
+             - `expectedTc = prev.tc`
+             - `existingPdfId = null`
+             - `targetPdfName = `${baseName} (Part ${part}).pdf``
+             - `turnsForPdf = chat.turns.slice(prev.tc)`
+       - If `existingFile` WAS trashed / deleted by user:
+         - Fall back cleanly to `mode = 'full'` (`part = 1, partStartTc = 0, expectedTc = 0, turnsForPdf = chat.turns`)!
+     - What if `prefixHash !== prev.th` (user edited/deleted an earlier turn) OR `prev.tc` wasn't saved yet?
+       - `mode = 'full'` (`part = 1, partStartTc = 0, expectedTc = 0, turnsForPdf = chat.turns`)!
+
+   **WAIT — CHECK ONE DETAIL ON `doPost(e)` WHEN `mode === 'new_part'` vs `mode === 'append'` vs `mode === 'full'`!** Look at `doPost(e)` in their original script (lines 166–177):
+   ```javascript
+   if (prev.p) {
+     try {
+       const old = DriveApp.getFileById(prev.p);
+       if (!old.isTrashed()) old.setTrashed(true);
+     } catch (err) {}
+   }
+   const dupes = pdfFolder.getFilesByName(payload.pdfName);
+   while (dupes.hasNext()) {
+     const df = dupes.next();
+     if (!df.isTrashed()) df.setTrashed(true);
+   }
+   ```
+   **LOOK WHAT WOULD HAPPEN IF WE KEPT `if (prev.p) old.setTrashed(true)` WHEN `mode === 'new_part'`!!** IF `mode === 'new_part'` (rolling over to `Part 2` because `Part 1` exceeded 15 MB), `prev.p` IS `Part 1`! If `doPost` trashed `prev.p`, it would DELETE `Part 1`!! **WHAT A CATCH!!** Let's fix that cleanly:
+   - In `doPost(e)`:
+     - Only trash `prev.p` when `payload.mode !== 'new_part'`! (Wait: when `mode === 'new_part'`, we WANT to keep `Part 1` untouched in Drive, and only trash any pre-existing file named `payload.pdfName` i.e. `Part 2`!)
+     - And when `mode === 'full'`, also clean up any old `(Part 2)`, `(Part 3)`? Actually trashing `prev.p` and `dupes` (by `payload.pdfName`) handles normal replacement, and if `mode === 'full'` and `prev.part > 1`, trashing `prev.p` + `dupes` handles it cleanly too (or even better: `getFilesByName(payload.pdfName)` cleans up `Chat Name.pdf`, and `prev.p` cleans up the previous active file).
+     - And when `mode === 'append'`: check `if (typeof payload.expectedTc === 'number' && typeof prev.tc === 'number' && prev.tc !== payload.expectedTc)` → reject (`{ ok: false, error: 'Stale delta: expectedTc mismatch' }`) so out-of-order concurrent callbacks can NEVER duplicate turns!
+     - On success in `doPost(e)`, save:
+       ```javascript
+       prev.p = created.getId();
+       prev.pt = payload.updatedMs;
+       prev.tc = payload.nextTc;
+       prev.th = payload.nextTh;
+       prev.part = payload.part || 1;
+       prev.partStartTc = payload.partStartTc || 0;
+       delete prev.qa;
+       ```
+
+4. **Check `requeueAllPastChats()` with the new fields!**
+   In `requeueAllPastChats()`:
+   ```javascript
+   delete st.t;
+   delete st.pt;
+   delete st.qt;
+   delete st.qa;
+   delete st.tc;
+   delete st.th;
+   delete st.part;
+   delete st.partStartTc;
+   ```
+   Wait: should `requeueAllPastChats()` clear `tc`/`th`/`part`/`partStartTc`? **YES!** Because `requeueAllPastChats()` is explicitly for doing a fresh full reset of all past chats! Clearing `tc`/`th`/`part`/`partStartTc` ensures every chat gets a clean full render from Turn 0 and records its baseline `tc`/`th`! (And for normal day-to-day runs, you do NOT run `requeueAllPastChats()` — only `syncCleanMarkdown` runs!)
+
+5. **Check `render.py` with `mode == 'append'` vs `'full'` vs `'new_part'`:**
+   Let's trace `render.py` step by step:
+   - Read job JSON:
+     ```python
+     mode = job.get('mode', 'full')
+     is_continuation = mode in ('append', 'new_part')
+     footer_label = 'Continued · Page ' if is_continuation else 'Page '
+     delta_bytes = build_pdf_bytes(job['mdText'], job.get('assets', []), footer_label=footer_label)
+     ```
+   - If `mode == 'append'` and `job.get('existingPdfId')`:
+     1. Call `fetch_existing_pdf(job['existingPdfId'])` (with retry loop up to 4 attempts on timeout/network errors):
+        ```python
+        resp = requests.post(
+            GAS_WEBHOOK_URL,
+            json={'secret': GAS_SECRET, 'action': 'get_pdf', 'fileId': existing_pdf_id},
+            timeout=120
+        )
+        ```
+        Decode `base64.b64decode(res_json['pdfB64'])` → `old_bytes`.
+     2. Merge with `pypdf`:
+        ```python
+        writer = PdfWriter()
+        writer.append(io.BytesIO(old_bytes))
+        writer.append(io.BytesIO(delta_bytes))
+        buf = io.BytesIO()
+        writer.write(buf)
+        final_pdf_bytes = buf.getvalue()
+        ```
+     3. Backwards compatibility: if a job in `jobs/` was created by an *older* script (so `mode` isn't in `job`), `mode` defaults to `'full'`, `final_pdf_bytes = delta_bytes`, and everything works seamlessly!
+   - When sending final PDF back to `GAS_WEBHOOK_URL`:
+     ```python
+     json={
+         'secret': GAS_SECRET,
+         'mode': mode,
+         'sourceId': job['sourceId'],
+         'updatedMs': job['updatedMs'],
+         'pdfName': job.get('pdfName') or f"{job['baseName']}.pdf",
+         'pdfB64': pdf_b64,
+         'expectedTc': job.get('expectedTc', 0),
+         'nextTc': job.get('nextTc'),
+         'nextTh': job.get('nextTh'),
+         'part': job.get('part', 1),
+         'partStartTc': job.get('partStartTc', 0)
+     }
+     ```
+     (Notice `timeout=180` for `requests.post` so even larger merged PDFs never hit a 90s timeout!)
+   - Also keep the local `git rev-parse` `delete_github_job` fix so > 1 MB jobs always delete cleanly!
+
+6. **WAIT — CHECK ONE SUBTLE EDGE CASE IN `Code.gs`!**
+   Look at `Code.gs` lines 97–99 (`assets`): In the original `Code.gs`, `assets` looped over `chat.turns`. Now, for `turnsForPdf` (`chat.turns` in `full` mode, or `chat.turns.slice(prev.tc)` in `append`/`new_part` mode): We loop over **`turnsForPdf`** when collecting `assets`! Wait: what if `assets` has a `dataB64` image inside a new turn — does it render cleanly in `delta_bytes`? YES! And old images from previous turns are ALREADY baked into `old.pdf`, so they aren't re-uploaded or duplicated!
+
+7. **WAIT — CHECK ONE MORE EDGE CASE IN `Code.gs`!**
+   Look at `if (fullTc === prev.tc)` inside `needsPdf` when `prefixHash === prev.th`! Suppose `prev.p` exists and is NOT trashed, and `fullTc === prev.tc` and `prefixHash === prev.th`:
+   - That means `updatedMs` changed on Drive (e.g. file touched/renamed or thought added when `INCLUDE_THOUGHTS: false`), **but the visible turns are 100% unchanged**!
+   - If the user **renamed** the chat file in Drive (`file.getName()` changed, so `baseName` changed -> `targetPdfName !== existingFile.getName()`), we should handle that too!
+   - Look how easy:
+     ```javascript
+     if (fullTc === prev.tc) {
+       if (existingFile.getName() !== targetPdfName) existingFile.setName(targetPdfName);
+       prev.pt = updatedMs;
+       skipPdfQueue = true;
+     }
+     ```
+     So if the user just renamed the file in Drive, Apps Script renames the existing PDF in Drive **in 0.1 seconds without even calling GitHub Actions!**
+
+Let's review ALL THREE files one last time for syntax errors, missing imports, indentation, or missing edge cases:
+- `build-pdfs.yml`: includes `pypdf` and `mathjax-full@3` ✅
+- `render.py`: imports `io`, `PdfWriter` from `pypdf`, `fetch_existing_pdf`, `pypdf` merge, MathJax v3 SVG, `fix_inline_bullets`, `git rev-parse` `delete_github_job`, 4-attempt retry loop ✅
+- `Code.gs`: `hashTurns_`, `renderContinuationMd_`, `CacheService` sync lock + brief `ScriptLock` per key, `get_pdf` action in `doPost(e)`, `expectedTc` guard, `mode === 'new_part'` preserves `Part 1`, 15 MB rollover threshold, `requeueAllPastChats()` ✅
+
+Let's present the 3 complete, drop-in files cleanly with simple deployment steps!Here are all three complete, ready-to-paste files implementing **Option A** (incremental turn-only rendering + `pypdf` PDF merging [2.1.1], with automatic rollover to `(Part 2).pdf` if a single PDF ever exceeds 15 MB).
+
+### How it behaves on your 500k + 10k scenario
+* **First time a chat is processed (or if you edit an earlier message):** Full render, saving the turn count (`tc`) and SHA-256 prefix hash (`th`).
+* **Next 10k-token follow-up:** Apps Script verifies the first `tc` turns match `th`, then sends **only the new 10k turns** (`~40 KB`) to GitHub. GitHub renders only those new pages (~2–3s), fetches the existing PDF from Drive, stitches them together with `pypdf` (< 0.5s), and saves the updated single PDF back to Drive.
+* **Safety rollover:** If a single PDF ever crosses **15 MB**, it automatically preserves `Part 1` and starts `Chat Name (Part 2).pdf` so `doPost` never hits Apps Script's memory/upload cap.
 
 ---
 
-### Step 2: Create `packs.json` at the Repo Root
-1. Go to the **main root page** of `ai-kb` (same level as `README.md` and `build-kb.py`).
-2. Tap **Add file** → **Create new file**.
-3. Name the file **`packs.json`**.
-4. Paste your custom groups using valid JSON (here is a starter example you can customize):
+### 1. GitHub: `.github/workflows/build-pdfs.yml`
 
-```json
-{
-  "economy-and-schemes": [
-    "ch01-*",
-    "ch03-*",
-    "ch04-*"
-  ],
-  "static-quick": [
-    "ch11-*",
-    "ch12-*",
-    "ch13-*"
-  ],
-  "math-and-core": [
-    "core",
-    "study-chats"
-  ]
-}
-```
-
-#### Rules to Remember Inside `packs.json`:
-* **Strict JSON syntax:** Use double quotes `"..."`, put commas between items, and **no trailing comma** after the last item or last bracket (and no `#` or `//` comments).
-* **Wildcards supported:**
-  * `"ch04-*"` → matches Chapter 4 automatically
-  * `"study-chats"` → matches standalone chats
-  * `"core"` → matches files inside `core/` (if you add any)
-* **Stay under 20 URLs per pack:** Keep each custom pack focused (around 2–5 chapters/folders, so it stays around ~3–12 URLs of 35 KB each—well within AI Studio’s 20-URL limit).
-
-5. Tap **Commit changes...**.
-
----
-
-### Step 3: Make `packs.json` Auto-Rebuild on Edit
-Right now, `.github/workflows/build-kb.yml` only triggers when `chats/**`, `core/**`, or `build-kb.py` changes. Add `"packs.json"` so editing `packs.json` triggers a rebuild automatically:
-
-1. Open **`.github/workflows/build-kb.yml`** → tap the **pencil icon (✏️)**.
-2. Add `- "packs.json"` under `paths:`:
 ```yaml
-    paths:
-      - "chats/**"
-      - "core/**"
-      - "build-kb.py"
-      - "packs.json"
+name: Build AI Studio PDFs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai-studio-pdf-renderer
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install WeasyPrint dependencies and Emoji/Symbol fonts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libpango-1.0-0 libharfbuzz0b libpangoft2-1.0-0 libharfbuzz-subset0 fontconfig fonts-noto-color-emoji fonts-noto-core fonts-symbola
+          fc-cache -f
+
+      - name: Install Python packages
+        run: python3 -m pip install --break-system-packages -q weasyprint markdown-it-py pygments beautifulsoup4 requests pypdf
+
+      - name: Install MathJax for LaTeX equations
+        run: npm install --no-save --prefix /tmp/mj mathjax-full@3
+
+      - name: Render PDFs and send back to Google Drive
+        env:
+          GAS_WEBHOOK_URL: ${{ secrets.GAS_WEBHOOK_URL }}
+          GAS_SECRET: ${{ secrets.GAS_SECRET }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+        run: python3 render.py
 ```
-3. Tap **Commit changes...**.
 
 ---
 
-### Step 4: Grab Your Custom Pack URLs
-1. Wait ~15 seconds for the GitHub Action to turn green ✅ (under **More ▾ → Actions**).
-2. Open **`_ai_bundles/packs-list.txt`** → **Raw**.
-3. Scroll down to see your new **`## PACK: custom-economy-and-schemes`**, **`custom-static-quick`**, and **`custom-math-and-core`** URL blocks—copy whichever ones you use most and pin them in Gboard Clipboard for instant 1-turn chats!
-
----
-
-## User
-
-My knowledge base is going to include many files in the future. How can I work about it?
-
----
-
-## Model
-
-GitHub itself won’t be your bottleneck—even **3,000 Markdown chats** only take ~40–50 MB of text.
-
-The **only two real scaling ceilings** are inside Google AI Studio Playground:
-1. **The 20-URL per-request cap** (a single 1-turn pack becomes unusable once it grows past ~10–15 URLs).
-2. **The ~35–40 KB browse snippet limit** (if `llms.txt` itself grows past ~35 KB, Playground will truncate the bottom of your index!).
-
-Here is the exact playbook to scale this architecture cleanly to **hundreds or thousands of files**:
-
----
-
-### 1. Keep Every Folder / Pack Under ~250 KB (~7 URLs Max)
-Right now, standalone files without a subfolder go into `study-chats`. Once you have 50–100 chats, `study-chats` would blow past 20 URLs and break 1-turn mode.
-* **The Fix:** Never dump everything flat into `chats/`. Always group into focused subfolders—and split big folders by sub-topic or year if one gets too large:
-  ```text
-  chats/
-  ├── quant/
-  ├── reasoning/
-  ├── english/
-  ├── ga-compendium/
-  ├── coding/
-  └── archive-2025/
-  ```
-* Because `build-kb.py` automatically turns every subfolder into its own pack, each pack stays compact (**2–7 URLs**), fast, and 100% 1-turn compatible.
-
----
-
-### 2. Protect `llms.txt` from Crossing 35 KB (Use a "2-Level Index" Later)
-Right now your `llms.txt` (with 23 Cold parts) is around **~12 KB**—plenty of headroom.
-* Up to about **60–80 Cold Bundles (~2.5 MB of text)**, one single `llms.txt` works cleanly as long as you keep entries concise (skip long `Preview:` lines once you have many bundles).
-* **Once `llms.txt` nears ~30 KB (100+ bundles):** Switch `build-kb.py` to a **2-Level Index**:
-  * **`llms.txt`** (<10 KB) becomes a tiny **Master Directory** listing only folder/topic indexes (`llms-quant.txt`, `llms-ga.txt`, `llms-coding.txt`).
-  * Each **`llms-<topic>.txt`** (<35 KB) lists the Cold Bundles for that topic.
-  * When you know the subject (e.g., Quant), paste **`llms-quant.txt`** + your question for **2-turn** lookup across hundreds of Quant files.
-
----
-
-### 3. Automate Sorting in Your 15-Minute Sync Pipeline
-You shouldn't sort hundreds of chats into folders manually on your phone.
-* In your **private repo’s 15-minute sync script**, add simple **title/keyword rules** (or read a tag like `#quant` / `#coding` / `#ga` in your prompt) to automatically save synced `.md` files into the right subfolder (`chats/quant/`, `chats/ga/`, etc.) inside `ai-kb`.
-* Anything without a matched keyword can fall back to `chats/misc-YYYY-MM/` so no single folder ever balloons uncontrollably.
-
----
-
-### 4. Keep Tier 1 (`core/` and `hot-recent.md`) Strictly Lean
-* **`core/` (`hot-core.md`):** Treat this like RAM—keep **only** master cheat sheets, formula lists, and key rules here (**stay under ~30–35 KB total** so it never gets truncated).
-* **`hot-recent.md`:** Our script already caps this at 40 KB (last 14 days, compact files only). Older chats automatically roll out into `cold/` and their topic packs, so Tier 1 stays fast forever.
-
----
-
-### 5. Use the 80/20 Daily Workflow + NotebookLM for Static Archives
-As your library grows large:
-* **Daily Active Topics (1-Turn):** Keep only your **3–5 most-used Subject Packs** (or custom `packs.json` bundles) pinned in Gboard Clipboard.
-* **Long-Tail / Older Files (2-Turn):** Use `llms.txt` (or `llms-<topic>.txt`) so you don't have to manage 30 clipboard pins.
-* **Massive Static Books / Archives (Bonus Trick):** If you ever accumulate **dozens of huge static PDFs/compendiums** (10+ MB), **NotebookLM (Gemini Notebook)** lets you upload **50 sources per notebook** (up to 500,000 words each) on the free tier—so you can bundle 30–50 static `.md` files per consolidated `.md` and keep giant static archives there, while keeping your **live, 15-minute-updated AI Studio chats** in this GitHub hybrid.
-
----
-
-Whenever you're ready to **wire up your private repo's 15-minute Apps Script pipeline** with automatic keyword-to-folder routing (or add the 2-level `llms-<topic>.txt` index), just let me know!
-
----
-
-## User
-
-Before automate the pipeline, I just want to know any compute or storage obstacles for the free tier since I make atleast 50 chats(10000 tokens each) per day
-
----
-
-## Model
-
-Good thing you checked first—at **50 chats/day × 10,000 tokens**, your pipeline produces roughly:
-* **~500,000 tokens/day** ≈ **~2.25 MB/day** of `.md` text (plus **10–25 MB/day** if you also keep `.pdf`s)
-* **~1,500 files/month** ≈ **~67.5 MB/month** of `.md` text
-* **~18,250 files/year** ≈ **~820 MB/year** of `.md` text
-
-At that velocity, **three free-tier ceilings and one RAG limit will break** unless you adjust how the pipeline batches and stores data:
-
----
-
-### 1. Private Repo Compute: GitHub Actions 2,000-Minute Cap *(Will Hit Mid-Month!)*
-* **Public `ai-kb` repo:** Standard Linux runners are **free with no minute limit**, so `build-kb.py` in `ai-kb` costs you zero quota.
-* **Private converter repo:** GitHub Free gives private repos **$12/month of compute (~2,000 Linux minutes/month)**, and **every job rounds up to the nearest full minute**.
-  * **The Trap:** Running 50 separate jobs/day = `50 × 1 min × 30 = 1,500 min/month` (and if PDF generation makes jobs take 65 seconds, GitHub bills **2 minutes/job = 3,000 min/month**, locking your private repo mid-month!).
-  * **The Fix:** **Batch instead of running 1 job per chat.** Have Apps Script queue new chats and trigger the private Action **once every 3–4 hours** (6–8 batch runs/day instead of 50+ runs/day). That drops usage to ~200–400 min/month.
-
----
-
-### 2. `ai-kb` Storage & Git History Bloat *(Silent Repo Killer!)*
-* **GitHub Limits:** GitHub recommends keeping total repo size **under 1 GB** (and strongly under 5 GB).
-* **The Trap:** Every time `build-kb.py` commits new hashed `cold/*.md` and `packs/*.md` bundles, **Git keeps every old version forever inside `.git` history**. If you rebuild and commit 5–20 MB of bundles **50 times a day**, `.git` history can balloon by **several GB per month**, making clones slow and risking GitHub size warnings.
-* **The Fix:**
-  1. **Batch pushes to `ai-kb` (2–4×/day)**—or set `build-kb.yml` to run on a **`cron` schedule every 6 hours** instead of on every file push.
-  2. **Never push `.pdf` files to GitHub** (keep only `.md`).
-  3. **Start a fresh archive repo (or squash old history)** every 6–12 months.
-
----
-
-### 3. Google Apps Script Quotas *(90 Min/Day Trigger Limit)*
-* **Consumer Gmail Limits:** **90 minutes/day** total trigger runtime (6 minutes max per run), **20,000 `UrlFetch` calls/day**, and **2,000 file conversions/day**.
-* **The Trap:** A 15-minute trigger runs **96 times/day**, leaving an average of **56 seconds per run** before hitting the 90-minute daily cap. Once your Drive folder holds 1,000+ files, scanning the whole folder every 15 minutes will blow past 56 seconds and fail.
-* **The Fix:** Store already-processed chat IDs in **`PropertiesService`** (or move processed chats into monthly subfolders) so each 15-minute check finishes in **2–4 seconds**. *(Also watch your 15 GB Google account storage if generating 50 PDFs/day—that’s ~4–9 GB/year in PDFs alone.)*
-
----
-
-### 4. The Biggest Obstacle: Your **AI Studio URL Context Index** Breaks at 50 Chats/Day!
-Look at the math inside AI Studio Playground:
-* One 10,000-token chat (**~45 KB**) is already larger than `MAX_PART_BYTES = 35 KB`—meaning **50 chats/day = ~65 new Cold parts per DAY (~2,000 parts/month)**.
-* **`hot-recent.md`** (40 KB cap) won't fit even **one** full raw 10k-token chat.
-* **`llms.txt`** overflows its **~35–40 KB browse truncation ceiling in just 2 days**, and static packs would multiply into hundreds of packs.
-
----
-
-### How to Design Around This Before Automating
-Pick whichever matches how you actually use those 50 daily chats:
-
-#### Path 1: **Distill or Filter Before Pushing to `ai-kb`** *(Best to Keep GitHub + AI Studio Hybrid Working)*
-Most 10,000-token chats are ~80% pasted prompts, trial-and-error, and verbose chatter, with ~20% reusable takeaways.
-* **Auto-summarize/filter:** Have your pipeline either push **only** chats tagged for your KB (e.g., 5–10/day) **or** distill each 10k-token chat into a **crisp 2–5 KB `.md` takeaway/cheat sheet** before pushing to `ai-kb` (while keeping the full 10k-token raw archive privately in Google Drive).
-* **Result:** ~3–6 MB/month instead of 67.5 MB/month—your `hot-recent.md`, topic packs, and `llms.txt` stay fast, clean, and workable for months.
-
-#### Path 2: **Keep All 50 Raw 10k-Token Chats/Day Searchable** *(Graduate from URL Context)*
-If you truly want **every raw 10,000-token chat** searchable without summarizing:
-* **Free Batching into NotebookLM (Gemini Notebook):** Have your pipeline merge each day’s 50 chats (~375,000 words, which fits under NotebookLM's **500,000 words/source** limit) into **1 daily `.md` file** in Google Drive, and load **50 days (~2,500 full raw chats)** per free notebook.
-* **True Vector RAG:** At 1,500+ raw long docs/month, a vector store (like the **Gemini API File Search tool**, or a local vector DB) handles unlimited document counts natively without needing manual packs or `llms.txt`.
-
----
-
-## User
-
-Let's resolve compute issue first.
-
----
-
-## Model
-
-To stay safely under GitHub’s **2,000 minutes/month** private-repo limit (and Apps Script’s **90 min/day** trigger limit) at **50 chats/day**, you need to eliminate **per-chat job overhead** and **mid-chat re-runs**.
-
-Here is the exact **4-step compute optimization plan**—followed by how we can patch your specific setup:
-
----
-
-### The Compute Math: Why You Burn Minutes Today
-GitHub Actions **rounds every job UP to the nearest full minute** on private repos:
-* **1 job per chat (50×/day):** `50 runs × 1–2 min × 30 days` = **1,500 to 3,000+ min/month** *(even if actual conversion only takes 5 seconds, booting the VM + installing tools bills 1–2 full minutes every time!)*.
-* **6 batched jobs/day (every 4 hours):** `6 runs × 1–2 min × 30 days` = **180 to 360 min/month** *(80%+ of your free quota left untouched!)*.
-
----
-
-### The 4 Fixes to Cut Compute by ~85%
-
-#### 1. Batch Queueing (50 Triggers/Day → 4–6 Runs/Day)
-Instead of firing a GitHub Action every time a single chat updates:
-* Let Apps Script check Drive every 15 minutes (just logging changed file IDs into a queue in `PropertiesService`—takes <2 seconds).
-* Trigger your private GitHub Action **only once every 3–4 hours** (and **skip firing** if the queue is empty), passing **all queued chats in one batch** so GitHub boots **one VM** and loops through ~8–12 chats in one pass.
-
-#### 2. Add a 20-Minute "Idle Debounce" (Stops Mid-Chat Waste)
-If you talk in one AI Studio chat for 45 minutes, a 15-minute trigger converts the *same* chat 3 times while you're still typing.
-* **The Fix:** In Apps Script, only queue a chat for conversion once its `lastUpdated` timestamp is **at least 20–30 minutes old** (meaning you finished the conversation). That alone cuts wasted conversions by **30–50%**.
-
-#### 3. Separate Fast `.md` vs. Heavy `.pdf` (or Cache PDF Tools)
-Converting `.md` takes **<1 second** in Python/Node. What makes jobs cross the 60-second line (`1 min → 2 min` billing!) is installing or running PDF renderers (`pandoc`/`texlive`/`playwright`/`weasyprint`) on every boot.
-* **Cache dependencies with `actions/cache`** (or use a pre-built image on `ghcr.io`) so your GitHub Action doesn't re-download packages on every run—dropping boot+setup from ~60s down to ~10s.
-* **Even faster:** Only generate `.pdf` once daily (or only on idle/finalized chats), while `.md` updates in batches every 4 hours.
-
-#### 4. Incremental Scan in Apps Script (Protect the 90-Min/Day Quota)
-Instead of scanning every file in your Google Drive folder every 15 minutes (which gets slower once you have 1,000+ chats):
-* Query Drive with **`modifiedDate > lastSyncTime`** (or track processed timestamps in **`PropertiesService`**), so each 15-minute check finishes in **1–3 seconds** instead of timing out.
-
----
-
-### Let's Patch Your Exact Pipeline Next
-To write the exact batching + debounce patch for your private repo and Apps Script:
-1. **How does your Apps Script send jobs to your private repo right now?** (`workflow_dispatch`, `repository_dispatch`, or pushing raw files via GitHub API?)
-2. **What does your private repo’s workflow use to convert `.md` and `.pdf`?** *(If you paste your private `.yml` workflow and Apps Script—making sure to **remove any PAT/tokens first**—I'll rewrite both with batching, debounce, and dependency caching!)*
-
----
-
-## User
-
-The reason for creating Google AI Studio - Google drive- Google apps script- GitHub pipeline through private repository earlier is as follows: I want to study maths, reasoning, general awareness and English for banking examinations through long chat sessions per topic. For example; If I study percentages topic in maths subject, I dedicate a chat session that will be saved as JSON in Google drive and move it to maths folder. I faced two hurdles. First, I can't open JSON files in drive to study without friction; so, I create a pipeline to convert the chat sessions into .md files for lightweight processing for the LLMs and .pdf files for me. Second, once a chat session grows big(300-400k tokens), drive takes too long to save the already saved session for just one new chat and google has also put limitations on September 29 that affect long chat sessions disproportionately especially for the free tier. So, I needed to optimise the context window as much as possible with the help of some external source
-
----
-
-## Model
-
-That explains everything—especially why you want **short, fast AI Studio sessions** instead of dragging a 300–400k token JSON around (which both slows down Google Drive saves and burns through AI Studio's free-tier limits much faster).
-
-Breaking each topic (like *Percentages*) into **short 10k–30k token mini-sessions** (`Percentages - Part 1`, `Part 2`, etc.) actually solves **both** problems at once:
-1. Drive saves become instant again (tiny JSONs instead of multi-MB ones), and your AI Studio quota goes much further.
-2. Your private converter doesn't have to keep re-rendering a giant 150-page PDF every time you send one new prompt!
-
----
-
-### How to Cut Your Private Repo Compute by ~85–90%
-
-Right now, your biggest compute leak is **spinning up a full GitHub Action VM + PDF engine for individual/active chats every 15 minutes**. Here is the exact architecture fix:
+### 2. GitHub: `render.py`
+
+```python
+import os, io, re, json, base64, html, time, subprocess, requests
+from bs4 import BeautifulSoup, NavigableString
+from markdown_it import MarkdownIt
+from pygments import highlight
+from pygments.lexers import get_lexer_by_name, TextLexer
+from pygments.formatters import HtmlFormatter
+from pypdf import PdfWriter
+from weasyprint import HTML
+
+GAS_WEBHOOK_URL = os.environ['GAS_WEBHOOK_URL']
+GAS_SECRET = os.environ['GAS_SECRET']
+GITHUB_TOKEN = os.environ['GITHUB_TOKEN']
+GITHUB_REPO = os.environ['GITHUB_REPO']
+
+formatter = HtmlFormatter(noclasses=True, style='friendly')
+
+MJ_SCRIPT = r"""
+const { mathjax } = require('/tmp/mj/node_modules/mathjax-full/js/mathjax.js');
+const { TeX } = require('/tmp/mj/node_modules/mathjax-full/js/input/tex.js');
+const { SVG } = require('/tmp/mj/node_modules/mathjax-full/js/output/svg.js');
+const { liteAdaptor } = require('/tmp/mj/node_modules/mathjax-full/js/adaptors/liteAdaptor.js');
+const { RegisterHTMLHandler } = require('/tmp/mj/node_modules/mathjax-full/js/handlers/html.js');
+const { AllPackages } = require('/tmp/mj/node_modules/mathjax-full/js/input/tex/AllPackages.js');
+
+const adaptor = liteAdaptor();
+RegisterHTMLHandler(adaptor);
+const tex = new TeX({ packages: AllPackages });
+const svg = new SVG({ fontCache: 'none' });
+const doc = mathjax.document('', { InputJax: tex, OutputJax: svg });
+
+let input = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', chunk => { input += chunk; });
+process.stdin.on('end', () => {
+  const items = JSON.parse(input || '[]');
+  const out = items.map(({ expr, display }) => {
+    try {
+      const node = doc.convert(expr, { display: !!display });
+      return adaptor.innerHTML(node);
+    } catch (e) {
+      return null;
+    }
+  });
+  process.stdout.write(JSON.stringify(out));
+});
+"""
+
+def render_code(code, lang, attrs):
+    lang_clean = (lang or '').strip().lower()
+    if lang_clean == 'mermaid':
+        try:
+            b64 = base64.urlsafe_b64encode(code.strip().encode('utf-8')).decode('ascii').rstrip('=')
+            r = requests.get(f'https://mermaid.ink/svg/{b64}?bgColor=white', timeout=15)
+            if r.status_code == 200 and '<svg' in r.text:
+                return f'<div class="diagram">{r.text}</div>'
+        except Exception:
+            pass
+    try:
+        lexer = get_lexer_by_name(lang_clean) if lang_clean else TextLexer()
+    except Exception:
+        lexer = TextLexer()
+    highlighted = highlight(code, lexer, formatter)
+    badge = f'<div class="code-lang">{lang_clean.upper()}</div>' if lang_clean else ''
+    return f'<div class="code-card">{badge}{highlighted}</div>'
+
+md = MarkdownIt('commonmark', {'html': False, 'linkify': False, 'highlight': render_code}).enable(['table', 'strikethrough'])
+
+BASE_CSS = """
+body {
+  font-family: "Liberation Sans", "DejaVu Sans", "Noto Color Emoji", Arial, sans-serif;
+  font-size: 10pt; line-height: 1.55; color: #1e293b;
+}
+h1 { font-size: 17pt; color: #0f172a; border-bottom: 2px solid #2563eb; padding-bottom: 6px; margin: 0 0 10px; break-after: avoid; }
+h2 { font-size: 12pt; color: #1e40af; background: #eff6ff; padding: 4px 10px; border-radius: 5px; margin: 16px 0 8px; break-after: avoid; }
+h3, h4 { color: #0f172a; margin: 12px 0 5px; break-after: avoid; }
+p { margin: 0 0 8px; orphans: 3; widows: 3; }
+blockquote { margin: 8px 0; padding: 6px 12px; border-left: 3px solid #94a3b8; background: #f8fafc; color: #475569; }
+hr { border: none; border-top: 1px solid #e2e8f0; margin: 12px 0; }
+ul, ol { margin: 4px 0 10px; padding-left: 20px; }
+li { margin-bottom: 3px; }
+code { font-family: "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace; font-size: 8.5pt; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; }
+.code-card { border: 1px solid #cbd5e1; border-radius: 6px; margin: 8px 0 12px; overflow: hidden; break-inside: avoid-page; }
+.code-lang { font-size: 7.5pt; font-weight: bold; background: #e2e8f0; color: #475569; padding: 2px 8px; }
+.code-card pre { margin: 0 !important; padding: 8px 10px !important; white-space: pre-wrap; word-break: break-word; font-size: 8pt; line-height: 1.4; }
+.diagram { text-align: center; margin: 10px 0; break-inside: avoid; }
+.diagram svg, img { max-width: 100%; max-height: 520px; height: auto; }
+.math-inline { display: inline; }
+.math-inline svg { display: inline; max-width: 100%; overflow: visible; color: inherit; }
+.math-display { display: block; text-align: center; margin: 8px 0 10px; break-inside: avoid; }
+.math-display svg { display: inline-block; max-width: 100%; overflow: visible; color: inherit; }
+.math-fallback { font-family: "Liberation Mono", "DejaVu Sans Mono", monospace; font-size: 9pt; background: #f8fafc; padding: 1px 4px; border-radius: 3px; }
+.wide-page { page: wide; }
+table { width: 100%; table-layout: fixed; border-collapse: collapse; margin: 10px 0 14px; font-size: 8.8pt; line-height: 1.4; }
+table.compact-tbl { font-size: 7.8pt; line-height: 1.32; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; vertical-align: top; overflow-wrap: break-word; word-wrap: break-word; }
+th { background: #e2e8f0; color: #0f172a; font-weight: bold; }
+tbody tr:nth-child(even) { background: #f8fafc; }
+"""
+
+def build_css(footer_prefix='Page '):
+    page_css = f"""
+@page {{
+  size: A4 portrait;
+  margin: 14mm 13mm;
+  @bottom-right {{ content: "{footer_prefix}" counter(page) " of " counter(pages); font-size: 8pt; color: #64748b; }}
+}}
+@page wide {{
+  size: A4 landscape;
+  margin: 11mm 12mm;
+  @bottom-right {{ content: "{footer_prefix}" counter(page) " of " counter(pages); font-size: 8pt; color: #64748b; }}
+}}
+"""
+    return page_css + BASE_CSS
+
+def fix_inline_bullets(text):
+    out_lines = []
+    for line in text.split('\n'):
+        if not line.strip():
+            out_lines.append(line)
+            continue
+        m_lead = re.match(r'^(\s*(?:[-*+]|\d+[.)])\s+)', line)
+        pos = len(m_lead.group(1)) if m_lead else 0
+        is_list_line = bool(m_lead)
+
+        in_italic = False
+        res = [line[:pos]]
+        i = pos
+        n = len(line)
+        split_count = 0
+
+        while i < n:
+            if line[i] == '*':
+                j = i
+                while j < n and line[j] == '*':
+                    j += 1
+                if (j - i) == 1:
+                    prev_ch = line[i - 1] if i > pos else ''
+                    next_ch = line[i + 1] if i + 1 < n else ''
+                    if not in_italic and prev_ch in (':', '.', ')') and next_ch == ' ':
+                        res.append('\n\n* ' if (split_count == 0 and not is_list_line) else '\n* ')
+                        split_count += 1
+                        i += 2
+                        continue
+                    else:
+                        in_italic = not in_italic
+                res.append(line[i:j])
+                i = j
+                continue
+            res.append(line[i])
+            i += 1
+        out_lines.append(''.join(res))
+    return '\n'.join(out_lines)
+
+def render_math_batch(math_items):
+    if not math_items:
+        return []
+    try:
+        proc = subprocess.run(
+            ['node', '-e', MJ_SCRIPT],
+            input=json.dumps(math_items),
+            text=True,
+            capture_output=True,
+            timeout=120
+        )
+        if proc.returncode == 0 and proc.stdout:
+            return json.loads(proc.stdout)
+        print(f"MathJax error (code={proc.returncode}): {proc.stderr[:400]}")
+    except Exception as e:
+        print(f"MathJax exception: {e}")
+    return [None] * len(math_items)
+
+def prepare_markdown_and_math(md_text):
+    code_store = []
+
+    def stash_fenced(m):
+        token = f'\uE000C{len(code_store)}\uE001'
+        code_store.append(m.group(2))
+        return m.group(1) + token
+
+    def stash_inline_code(m):
+        token = f'\uE000C{len(code_store)}\uE001'
+        code_store.append(m.group(0))
+        return token
+
+    text = re.sub(r'(^|\n)([ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n[ \t]*\3[ \t]*(?=\n|$))', stash_fenced, md_text)
+    text = re.sub(r'(`+)([^\n]*?)\1', stash_inline_code, text)
+
+    math_items = []
+
+    def stash_math(expr, display):
+        token = f'\uE000M{len(math_items)}\uE001'
+        math_items.append({'expr': expr.strip(), 'display': display})
+        return token
+
+    text = re.sub(r'(?<!\\)\$\$([\s\S]+?)(?<!\\)\$\$', lambda m: stash_math(m.group(1), True), text)
+    text = re.sub(r'(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]', lambda m: stash_math(m.group(1), True), text)
+    text = re.sub(r'(?<!\\)\\\((.+?)(?<!\\)\\\)', lambda m: stash_math(m.group(1), False), text)
+    text = re.sub(r'(?<!\\)\$(?!\s)((?:\\\$|[^$\n])+?)(?<!\s)(?<!\\)\$(?!\d)', lambda m: stash_math(m.group(1), False), text)
+
+    text = fix_inline_bullets(text)
+
+    for idx, original_code in enumerate(code_store):
+        text = text.replace(f'\uE000C{idx}\uE001', original_code)
+
+    return text, math_items
