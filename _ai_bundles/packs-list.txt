@@ -1,5 +1,5 @@
 # 1-Turn Dynamic Packs (Grouped by Subject / Book)
-# For mobile 1-Tap Copy, open GitHub Pages index.html (or _ai_bundles/packs.html).
+# Packs > 20 parts automatically use a 1-URL Topic Index so they fit AI Studio's URL Context cap.
 
 # ========================================
 # SUBJECT: Books & Compendiums
