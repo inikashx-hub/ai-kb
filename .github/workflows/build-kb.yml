@@ -1,0 +1,72 @@
+name: Build AI Knowledge Bundles
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "chats/**"
+      - "core/**"
+      - "kb/**"
+      - "packs.json"
+      - "build-kb.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "build-and-pages"
+  cancel-in-progress: false
+
+jobs:
+  build-bundles:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build Hot/Cold bundles and llms.txt
+        run: |
+          python3 build-kb.py
+          if [ ! -f index.html ] && [ -f _ai_bundles/packs.html ]; then
+            cp _ai_bundles/packs.html index.html
+          fi
+          touch .nojekyll
+
+      - name: Commit updated bundles
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add _ai_bundles/ index.html .nojekyll
+          if git diff --staged --quiet; then
+            echo "No bundle changes to commit."
+          else
+            git commit -m "chore: rebuild AI knowledge bundles [skip ci]"
+            git push
+          fi
+
+      - name: Stage static site for GitHub Pages
+        run: |
+          mkdir -p _site
+          cp index.html .nojekyll _site/
+          cp -r _ai_bundles _site/_ai_bundles
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy-pages:
+    needs: build-bundles
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
