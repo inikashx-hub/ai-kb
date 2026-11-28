@@ -246,8 +246,8 @@
   Topics/Chapters: 18. Countries, Capitals & General Static GK
   Preview: ESIC UDC Mains Exam 2019 · 2019 · Modern Indian History · Covered in AC 195. The Capital of Hungary  ... of Odisha Cyclone Answer: Fani SIB Clerk Exam 2019 · Shift 2 · 2019 · Cyclone Naming · Covered in AC
 
-- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-english.3d70af8e.md
+- URL: https://raw.githubusercontent.com/inikashx-hub/ai-kb/main/_ai_bundles/cold/cold-english.9415191b.md
   Topic Group: english
-  Files/Parts: Adjectives (2026-11-18)
+  Files/Parts: Adjectives[KB] (2026-11-28)
   User Questions: Comprehensive analysis of the common errors in using adjectives
   Topics/Chapters: 1. Errors in Degrees of Comparison | 2. Confusing Adjectives with Adverbs | 3. Participial Adjectives (`-ed` vs. `-ing`) | 4. Errors in Intensifiers (`Very`, `Much`, `Too`, `Enough`) | 5. Errors in Adjective Position (Syntax) | 6. Violating Adjective Order and Comma Rules | 7. Pluralizing Adjectives and Compound Modifiers | 8. Confusing Quantifiers and Determiners (Troublesome Pairs)

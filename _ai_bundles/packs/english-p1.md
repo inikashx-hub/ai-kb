@@ -4,9 +4,9 @@
 ---
 ## FILE: `chats/english/Adjectives.md`
 
-# Adjectives 
+# Adjectives[KB]
 
-> **Model:** gemini-4-hydrogen | **Updated:** 2026-11-18 06:44 UTC
+> **Model:** gemini-4-hydrogen | **Updated:** 2026-11-28 13:20 UTC
 
 ---
 
